@@ -19,7 +19,7 @@ struct ContentView: View {
         if clipboardManager.selectedCategory != .all {
             if clipboardManager.selectedCategory == .pinned {
                 items = items.filter { $0.isPinned }
-            } else {
+        } else {
                 items = items.filter { $0.category == clipboardManager.selectedCategory }
             }
         }
@@ -74,10 +74,10 @@ struct ContentView: View {
                         VStack(spacing: 0) {
                             if !clipboardManager.clipboardItems.isEmpty {
                                 VStack(spacing: 8) {
-                                    // Arama alanı
-                                    SearchBar(text: $searchText)
-                                        .padding(.horizontal)
-                                        .padding(.top, 10)
+                                // Arama alanı
+                                SearchBar(text: $searchText)
+                                    .padding(.horizontal)
+                                    .padding(.top, 10)
 
                                     // Kategori filtreleme çubuğu
                                     ScrollView(.horizontal, showsIndicators: false) {
@@ -130,19 +130,19 @@ struct ContentView: View {
                                     // Filtreleme sonuçları boş görünümü
                                     VStack(spacing: 24) {
                                         if !searchText.isEmpty {
-                                            // Arama sonucu boş durumu
-                                            Image(systemName: "magnifyingglass")
+                                    // Arama sonucu boş durumu
+                                        Image(systemName: "magnifyingglass")
                                                 .font(.system(size: 50))
-                                                .foregroundColor(.gray)
+                                            .foregroundColor(.gray)
 
-                                            Text("Sonuç Bulunamadı")
-                                                .font(.system(size: 20, weight: .semibold))
-                                                .foregroundColor(.primary)
+                                        Text("Sonuç Bulunamadı")
+                                            .font(.system(size: 20, weight: .semibold))
+                                            .foregroundColor(.primary)
 
-                                            Text("\"\(searchText)\" ile eşleşen bir sonuç yok")
-                                                .font(.system(size: 16))
-                                                .foregroundColor(.secondary)
-                                                .multilineTextAlignment(.center)
+                                        Text("\"\(searchText)\" ile eşleşen bir sonuç yok")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(.secondary)
+                                            .multilineTextAlignment(.center)
                                         } else {
                                             // Kategori filtrelemesi boş durumu
                                             Image(systemName: clipboardManager.selectedCategory.icon)
