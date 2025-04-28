@@ -1,0 +1,89 @@
+name: ClipboardManager
+options:
+  bundleIdPrefix: com.ahmtcanx
+  deploymentTarget:
+    iOS: 17.0
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: "Ahmet şahbazoğlu (Personal Team)"
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "Apple Development"
+    CODE_SIGN_ENTITLEMENTS: ""
+
+targets:
+  ClipboardManager:
+    type: application
+    platform: iOS
+    sources:
+      - ClipboardManager
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: "Pano Yöneticisi"
+        UILaunchStoryboardName: "LaunchScreen"
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIBackgroundModes:
+          - fetch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ahmtcanx.clipboardmanager
+        DEVELOPMENT_TEAM: "Ahmet şahbazoğlu (Personal Team)"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: ClipboardManager/ClipboardManager.entitlements
+    dependencies:
+      - target: KeyboardExtension
+    entitlements:
+      path: ClipboardManager/ClipboardManager.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.ahmtcanx.clipboardmanager
+
+  KeyboardExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - KeyboardExtension
+      - ClipboardManager/ClipboardManager.swift
+    info:
+      path: KeyboardExtension/Info.plist
+      properties:
+        CFBundleDisplayName: "Pano Yöneticisi"
+        CFBundlePackageType: "XPC!"
+        NSExtension:
+          NSExtensionAttributes:
+            IsASCIICapable: false
+            PrefersRightToLeft: false
+            PrimaryLanguage: en-US
+            RequestsOpenAccess: true
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ahmtcanx.clipboardmanager.keyboard
+        DEVELOPMENT_TEAM: "Ahmet şahbazoğlu (Personal Team)"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: KeyboardExtension/KeyboardExtension.entitlements
+    dependencies:
+      - sdk: SwiftUI.framework
+    entitlements:
+      path: KeyboardExtension/KeyboardExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.ahmtcanx.clipboardmanager
+
+schemes:
+  ClipboardManager:
+    build:
+      targets:
+        ClipboardManager: all
+        KeyboardExtension: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release 
