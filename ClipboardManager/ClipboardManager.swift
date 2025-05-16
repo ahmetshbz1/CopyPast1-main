@@ -136,6 +136,14 @@ public class ClipboardManager: ObservableObject {
                 lastCopiedText = text
                 DispatchQueue.main.async {
                     self.addItem(text)
+
+                    // Değişiklikleri hemen kaydet - klavye eklentisiyle senkronizasyon için önemli
+                    self.saveItems()
+
+                    // Darwin bildirimini zorla gönder
+                    let center = CFNotificationCenterGetDarwinNotifyCenter()
+                    let name = "com.ahmtcanx.clipboardmanager.dataChanged" as CFString
+                    CFNotificationCenterPostNotification(center, CFNotificationName(name), nil, nil, true)
                 }
             }
         }
@@ -165,8 +173,6 @@ public class ClipboardManager: ObservableObject {
         if clipboardItems.count > maxItems {
             clipboardItems.removeLast()
         }
-
-        saveItems()
 
         // Bildirim yayınla
         NotificationCenter.default.post(name: .clipboardItemAdded, object: nil)

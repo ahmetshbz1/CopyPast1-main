@@ -12,14 +12,35 @@ class KeyboardViewController: UIInputViewController {
         super.viewDidLoad()
 
         lastPasteboardChangeCount = UIPasteboard.general.changeCount
+
+        // Klavye açıldığında verileri hemen yükle
+        clipboardManager.loadItems()
+
         setupClipboardObservers()
+
+        // Darwin bildirimlerine abone ol
+        setupDarwinNotifications()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         setupKeyboardView()
-        clipboardManager.loadItems()
-        updateKeyboardView()
+
+        // Klavye görünür olduğunda verileri yeniden yükle
+        DispatchQueue.main.async { [weak self] in
+            self?.clipboardManager.loadItems()
+
+            // Pano değişikliğini zorla kontrol et
+            self?.checkPasteboardChanges()
+
+            // Görünümü güncelle
+            self?.updateKeyboardView()
+
+            // Darwin bildirimini zorla gönder, diğer bileşenleri uyandırmak için
+            let center = CFNotificationCenterGetDarwinNotifyCenter()
+            let name = "com.ahmtcanx.clipboardmanager.dataChanged" as CFString
+            CFNotificationCenterPostNotification(center, CFNotificationName(name), nil, nil, true)
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -130,7 +151,16 @@ class KeyboardViewController: UIInputViewController {
             object: nil
         )
 
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        // Başka bir bildirim daha ekleyelim
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleClipboardManagerChanges),
+            name: .clipboardItemAdded,
+            object: nil
+        )
+
+        // Daha kısa aralıklarla kontrol et, 0.5 saniye yerine 0.2 saniye
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             self?.checkPasteboardChanges()
         }
     }
@@ -144,7 +174,12 @@ class KeyboardViewController: UIInputViewController {
             if let text = UIPasteboard.general.string, !text.isEmpty {
                 if UIPasteboard.general.hasStrings {
                     DispatchQueue.main.async { [weak self] in
+                        // Ana uygulamaya gönderme - UserDefaults'a kaydetme
                         self?.clipboardManager.addItem(text)
+
+                        // Dosyayı zorla kaydet - buradaki sorun bu kısımdaydı
+                        self?.clipboardManager.saveItems()
+
                         self?.updateKeyboardView()
                         self?.showToast(message: "Metin kaydedildi ✓")
                     }
@@ -203,5 +238,30 @@ class KeyboardViewController: UIInputViewController {
     deinit {
         updateTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
+
+        // Darwin observer'ı temizle
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        let observer = UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        CFNotificationCenterRemoveObserver(center, observer, nil, nil)
+    }
+
+    private func setupDarwinNotifications() {
+        // Darwin bildirimlerini dinle
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        let observer = UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        let name = "com.ahmtcanx.clipboardmanager.dataChanged" as CFString
+
+        CFNotificationCenterAddObserver(center,
+                                      observer,
+                                      { (_, observer, name, _, _) in
+            let viewController = Unmanaged<KeyboardViewController>.fromOpaque(observer!).takeUnretainedValue()
+            DispatchQueue.main.async {
+                viewController.clipboardManager.loadItems()
+                viewController.updateKeyboardView()
+            }
+        },
+                                      name,
+                                      nil,
+                                      .deliverImmediately)
     }
 }
