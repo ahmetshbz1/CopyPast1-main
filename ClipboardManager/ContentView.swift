@@ -59,10 +59,20 @@ struct ContentView: View {
                 
                 VStack(spacing: 0) {
                     if !clipboardManager.clipboardItems.isEmpty {
-                        headerSection
+                        HeaderSectionView(
+                            clipboardManager: clipboardManager,
+                            searchText: $searchText
+                        )
                     }
                     
-                    contentSection
+                    ContentSectionView(
+                        clipboardManager: clipboardManager,
+                        filteredItems: filteredItems,
+                        searchText: searchText,
+                        showToastMessage: showToastMessage,
+                        onDeleteItem: deleteItem,
+                        onTogglePin: togglePin
+                    )
                     
                     if showToast {
                         ToastView(message: toastMessage)
@@ -73,145 +83,58 @@ struct ContentView: View {
             }
             .navigationTitle("Pano Geçmişi")
             .toolbar {
-                toolbarContent
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    if !clipboardManager.clipboardItems.isEmpty {
+                        Button(action: {
+                            withAnimation(.spring()) {
+                                clearAllItems()
+                                searchText = ""
+                            }
+                        }) {
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                                .font(.system(size: 16, weight: .medium))
+                        }
+                    }
+                    
+                    Menu {
+                        Button(action: {
+                            UserDefaults.standard.removeObject(forKey: "isOnboardingCompleted")
+                            onboardingManager.isOnboardingCompleted = false
+                        }) {
+                            Label("Kurulum Sihirbazı", systemImage: "wand.and.stars")
+                        }
+                        
+                        Button(action: {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }) {
+                            Label("Klavye Ayarları", systemImage: "keyboard")
+                        }
+                        
+                        Divider()
+                        
+                        Button(action: {
+                            showAboutSheet = true
+                        }) {
+                            Label("Hakkında", systemImage: "info.circle")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                }
             }
             .onTapGesture {
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             }
         }
     }
-    
-    private var headerSection: some View {
-        VStack(spacing: 8) {
-            SearchBar(text: $searchText)
-                .padding(.horizontal)
-                .padding(.top, 10)
-            
-            categoryFilterBar
-        }
-    }
-    
-    private var categoryFilterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(ItemCategory.allCases, id: \.self) { category in
-                    CategoryButton(
-                        category: category,
-                        isSelected: clipboardManager.selectedCategory == category,
-                        onTap: {
-                            withAnimation {
-                                clipboardManager.selectedCategory = category
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        }
-                    )
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-        .padding(.vertical, 8)
-    }
-    
-    private var contentSection: some View {
-        Group {
-            if clipboardManager.clipboardItems.isEmpty {
-                EmptyStateView()
-            } else if filteredItems.isEmpty {
-                FilteredEmptyView(searchText: searchText, selectedCategory: clipboardManager.selectedCategory)
-            } else {
-                itemsList
-            }
-        }
-    }
-    
-    private var itemsList: some View {
-        List {
-            ForEach(filteredItems) { item in
-                ClipboardItemView(
-                    item: item,
-                    showToastMessage: showToastMessage
-                )
-                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
-                        withAnimation {
-                            deleteItem(item)
-                        }
-                    } label: {
-                        Label("Sil", systemImage: "trash")
-                    }
-                }
-                .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                    Button {
-                        withAnimation {
-                            togglePin(item)
-                        }
-                    } label: {
-                        Label(item.isPinned ? "Sabitlemeyi Kaldır" : "Sabitle",
-                              systemImage: item.isPinned ? "pin.slash" : "pin")
-                    }
-                    .tint(.blue)
-                }
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .refreshable {
-            clipboardManager.loadItems()
-        }
-    }
-    
 }
 
-// MARK: - ContentView Extensions
+// MARK: - ContentView Helper Functions
 extension ContentView {
-    var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
-            if !clipboardManager.clipboardItems.isEmpty {
-                Button(action: {
-                    withAnimation(.spring()) {
-                        clipboardManager.clearAllItems()
-                        searchText = ""
-                    }
-                }) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                        .font(.system(size: 16, weight: .medium))
-                }
-            }
-            
-            Menu {
-                Button(action: {
-                    UserDefaults.standard.removeObject(forKey: "isOnboardingCompleted")
-                    onboardingManager.isOnboardingCompleted = false
-                }) {
-                    Label("Kurulum Sihirbazı", systemImage: "wand.and.stars")
-                }
-                
-                Button(action: {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                }) {
-                    Label("Klavye Ayarları", systemImage: "keyboard")
-                }
-                
-                Divider()
-                
-                Button(action: {
-                    showAboutSheet = true
-                }) {
-                    Label("Hakkında", systemImage: "info.circle")
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 16, weight: .medium))
-            }
-        }
-    }
     
     func setupNotificationObserver() {
         NotificationCenter.default.addObserver(
@@ -246,6 +169,10 @@ extension ContentView {
         clipboardManager.togglePinItem(item)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         showToastMessage(item.isPinned ? "Sabitleme kaldırıldı" : "Sabitlendi")
+    }
+    
+    func clearAllItems() {
+        clipboardManager.clearAllItems()
     }
 }
 

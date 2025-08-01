@@ -1,10 +1,8 @@
 import UIKit
 import SwiftUI
 
-// MARK: - Manager sınıfları için import'lar
-// Manager'lar aynı target içinde olması nedeniyle otomatik olarak erişilebilir olmalıdır
-
 class KeyboardViewController: UIInputViewController {
+    // MARK: - Properties
     var clipboardManager = ClipboardManager.shared
     var clipboardView: UIHostingController<ClipboardView>?
     var updateTimer: Timer?
@@ -12,29 +10,25 @@ class KeyboardViewController: UIInputViewController {
     var toastView: UIHostingController<ToastView>?
     let darwinNotificationManager = DarwinNotificationManager()
     
+    // MARK: - Managers
+    private lazy var setupManager = KeyboardSetupManager(viewController: self)
+    private lazy var notificationHandler = KeyboardNotificationHandler(viewController: self)
+    private lazy var actionHandler = KeyboardActionHandler(viewController: self)
     
+    // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        lastPasteboardChangeCount = UIPasteboard.general.changeCount
-        clipboardManager.loadItems()
-        
-        setupClipboardObservers()
-        setupDarwinNotifications()
+        initializeKeyboard()
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        setupKeyboardView()
-        setupTapGesture()
-        reloadAndSync()
+        setupKeyboardInterface()
     }
     
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
-        if let inputView = view as? UIInputView {
-            inputView.frame.size.height = 291
-        }
+        configureKeyboardHeight()
     }
     
     override func dismissKeyboard() {
@@ -42,143 +36,47 @@ class KeyboardViewController: UIInputViewController {
     }
     
     deinit {
-        updateTimer?.invalidate()
-        NotificationCenter.default.removeObserver(self)
-        darwinNotificationManager.stopObserving()
+        notificationHandler.removeObservers()
     }
     
-    // MARK: - Action Methods (Direct implementation)
+    // MARK: - Public Methods (Exposed for managers)
     func handleItemSelection(_ text: String) {
-        if text == "__DELETE__" {
-            textDocumentProxy.deleteBackward()
-        } else {
-            textDocumentProxy.insertText(text)
-        }
+        actionHandler.handleItemSelection(text)
     }
     
     @objc func handleTapOutside(_ gesture: UITapGestureRecognizer) {
-        let location = gesture.location(in: view)
-        
-        if let clipboardView = clipboardView?.view {
-            let convertedLocation = view.convert(location, to: clipboardView)
-            if !clipboardView.bounds.contains(convertedLocation) {
-                advanceToNextInputMode()
-            }
-        }
+        actionHandler.handleTapOutside(gesture)
     }
     
     @objc func checkPasteboardChanges() {
-        let currentChangeCount = UIPasteboard.general.changeCount
-        
-        if currentChangeCount != lastPasteboardChangeCount {
-            lastPasteboardChangeCount = currentChangeCount
-            
-            if let text = UIPasteboard.general.string, !text.isEmpty {
-                if UIPasteboard.general.hasStrings {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.clipboardManager.addItem(text)
-                        self?.clipboardManager.saveItems()
-                        self?.updateKeyboardView()
-                    }
-                }
-            }
-        }
+        actionHandler.checkPasteboardChanges()
     }
     
     @objc func handleClipboardManagerChanges(_ notification: Notification? = nil) {
-        DispatchQueue.main.async { [weak self] in
-            self?.clipboardManager.loadItems()
-            self?.updateKeyboardView()
-        }
+        actionHandler.handleClipboardManagerChanges(notification)
     }
     
     func updateKeyboardView() {
-        if let clipboardView = clipboardView {
-            let selectedCategory = self.clipboardManager.selectedCategory
-            
-            clipboardView.rootView = ClipboardView(
-                clipboardManager: clipboardManager,
-                onItemSelected: { [weak self] text in
-                    self?.handleItemSelection(text)
-                },
-                onDismiss: { [weak self] in
-                    self?.advanceToNextInputMode()
-                }
-            )
-            
-            self.clipboardManager.selectedCategory = selectedCategory
-        }
+        actionHandler.updateKeyboardView()
     }
     
-    // MARK: - Setup Methods
-    private func setupKeyboardView() {
-        let hostingController = UIHostingController(
-            rootView: ClipboardView(
-                clipboardManager: ClipboardManager.shared,
-                onItemSelected: { [weak self] text in
-                    self?.handleItemSelection(text)
-                },
-                onDismiss: { [weak self] in
-                    self?.advanceToNextInputMode()
-                }
-            )
-        )
-        self.clipboardView = hostingController
-        
-        addChild(hostingController)
-        view.addSubview(hostingController.view)
-        hostingController.didMove(toParent: self)
-        
-        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
-            hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-        
-        view.heightAnchor.constraint(equalToConstant: 274).isActive = true
+    // MARK: - Private Methods
+    private func initializeKeyboard() {
+        lastPasteboardChangeCount = UIPasteboard.general.changeCount
+        clipboardManager.loadItems()
+        notificationHandler.setupClipboardObservers()
+        setupManager.setupDarwinNotifications()
     }
     
-    private func setupClipboardObservers() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(checkPasteboardChanges),
-            name: UIPasteboard.changedNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleClipboardManagerChanges),
-            name: .clipboardManagerDataChanged,
-            object: nil
-        )
-        
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            self?.checkPasteboardChanges()
-        }
+    private func setupKeyboardInterface() {
+        setupManager.setupKeyboardView()
+        setupManager.setupTapGesture()
+        actionHandler.reloadAndSync()
     }
     
-    private func setupDarwinNotifications() {
-        darwinNotificationManager.startObserving(observer: self) { [weak self] in
-            self?.clipboardManager.loadItems()
-            self?.updateKeyboardView()
-        }
-    }
-    
-    private func setupTapGesture() {
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTapOutside))
-        tapGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(tapGesture)
-    }
-    
-    private func reloadAndSync() {
-        DispatchQueue.main.async { [weak self] in
-            self?.clipboardManager.loadItems()
-            self?.checkPasteboardChanges()
-            self?.updateKeyboardView()
-            self?.darwinNotificationManager.postNotification()
+    private func configureKeyboardHeight() {
+        if let inputView = view as? UIInputView {
+            inputView.frame.size.height = 291
         }
     }
 }

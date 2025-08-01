@@ -9,63 +9,16 @@ public class ClipboardManager: ObservableObject {
     @Published public var selectedCategory: ItemCategory = .all
     public let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
     
-    private var lastCopiedText: String?
-    private var lastPasteboardChangeCount: Int = UIPasteboard.general.changeCount
-    private var updateTimer: Timer?
-    private let darwinNotificationManager = DarwinNotificationManager()
+    private let monitor = ClipboardMonitor()
     
     private init() {
         loadItems()
-        startMonitoring()
+        setupMonitoring()
     }
     
-    private func startMonitoring() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(checkClipboard),
-            name: UIPasteboard.changedNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(checkClipboard),
-            name: UIApplication.willEnterForegroundNotification,
-            object: nil
-        )
-        
-        darwinNotificationManager.startObserving(observer: self) { [weak self] in
-            self?.loadItems()
-        }
-        
-        updateTimer = Timer.scheduledTimer(withTimeInterval: Constants.pasteboardCheckInterval, repeats: true) { [weak self] _ in
-            self?.checkPasteboardChanges()
-        }
-        
-        checkClipboard()
-    }
-    
-    @objc private func checkPasteboardChanges() {
-        let currentChangeCount = UIPasteboard.general.changeCount
-        
-        if currentChangeCount != lastPasteboardChangeCount {
-            lastPasteboardChangeCount = currentChangeCount
-            checkClipboard()
-        }
-    }
-    
-    @objc private func checkClipboard() {
-        if let text = UIPasteboard.general.string,
-           !text.isEmpty && text != lastCopiedText {
-            if UIPasteboard.general.hasStrings {
-                lastCopiedText = text
-                DispatchQueue.main.async {
-                    self.addItem(text)
-                    self.saveItems()
-                    self.darwinNotificationManager.postNotification()
-                }
-            }
-        }
+    private func setupMonitoring() {
+        monitor.delegate = self
+        monitor.startMonitoring()
     }
     
     public func addItem(_ text: String) {
@@ -88,7 +41,6 @@ public class ClipboardManager: ObservableObject {
         if let data = userDefaults?.data(forKey: Constants.clipboardItemsKey),
            let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) {
             clipboardItems = items
-            lastCopiedText = items.first?.text
         }
     }
     
@@ -99,7 +51,7 @@ public class ClipboardManager: ObservableObject {
             
             DispatchQueue.main.async {
                 self.notifyClipboardChanged()
-                self.darwinNotificationManager.postNotification()
+                self.monitor.postDarwinNotification()
             }
         }
     }
@@ -144,9 +96,19 @@ public class ClipboardManager: ObservableObject {
         }
     }
     
-    deinit {
-        updateTimer?.invalidate()
-        NotificationCenter.default.removeObserver(self)
-        darwinNotificationManager.stopObserving()
+}
+
+// MARK: - ClipboardMonitorDelegate
+extension ClipboardManager: ClipboardMonitorDelegate {
+    func clipboardMonitor(_ monitor: ClipboardMonitor, didDetectNewText text: String) {
+        DispatchQueue.main.async {
+            self.addItem(text)
+            self.saveItems()
+            self.monitor.postDarwinNotification()
+        }
+    }
+    
+    func clipboardMonitorDidReceiveDarwinNotification() {
+        loadItems()
     }
 }
