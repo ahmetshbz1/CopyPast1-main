@@ -46,6 +46,16 @@ targets:
     sources:
       - KeyboardExtension
       - ClipboardManager/ClipboardManager.swift
+      - ClipboardManager/Models
+      - ClipboardManager/Views/Components/ItemContentView.swift
+      - ClipboardManager/Views/Components/ToastView.swift
+      - ClipboardManager/Views/Components/AnimatedBackground.swift
+      - ClipboardManager/Views/Components/CategoryButton.swift
+      - ClipboardManager/Utilities/Constants.swift
+      - ClipboardManager/Utilities/CategoryDeterminer.swift
+      - ClipboardManager/Utilities/DateHelper.swift
+      - ClipboardManager/Managers/DarwinNotificationManager.swift
+      - ClipboardManager/Extensions/NotificationExtensions.swift
     info:
       path: KeyboardExtension/Info.plist
       properties:

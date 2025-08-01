@@ -2,74 +2,17 @@ import Foundation
 import SwiftUI
 import UIKit
 
-// Bildirim adını tanımla
-public extension Notification.Name {
-    static let clipboardItemAdded = Notification.Name("clipboardItemAdded")
-}
-
-public struct ClipboardItem: Identifiable, Codable {
-    public let id: UUID
-    public var text: String
-    public let date: Date
-    public var isPinned: Bool
-    public var category: ItemCategory
-
-    public init(text: String) {
-        self.id = UUID()
-        self.text = text
-        self.date = Date()
-        self.isPinned = false
-        self.category = ClipboardManager.determineCategory(for: text)
-    }
-}
-
-public enum ItemCategory: String, Codable, CaseIterable {
-    case all = "Tümü"
-    case pinned = "Sabitler"
-    case text = "Metin"
-    case link = "Linkler"
-    case email = "E-posta"
-    case phone = "Telefon"
-    case short = "Kısa"
-
-    var icon: String {
-        switch self {
-        case .all: return "list.bullet"
-        case .pinned: return "pin.fill"
-        case .text: return "doc.text.fill"
-        case .link: return "link"
-        case .email: return "envelope.fill"
-        case .phone: return "phone.fill"
-        case .short: return "character"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .all: return .blue
-        case .pinned: return .orange
-        case .text: return .primary
-        case .link: return .green
-        case .email: return .blue
-        case .phone: return .purple
-        case .short: return .gray
-        }
-    }
-}
-
 public class ClipboardManager: ObservableObject {
     public static let shared = ClipboardManager()
 
     @Published public var clipboardItems: [ClipboardItem] = []
     @Published public var selectedCategory: ItemCategory = .all
-    private let maxItems = 50
-    public let userDefaults = UserDefaults(suiteName: "group.com.ahmtcanx.clipboardmanager")
+    public let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
 
     private var lastCopiedText: String?
     private var lastPasteboardChangeCount: Int = UIPasteboard.general.changeCount
     private var updateTimer: Timer?
-
-    static let clipboardChangedNotification = Notification.Name("ClipboardManagerDataChanged")
+    private let darwinNotificationManager = DarwinNotificationManager()
 
     private init() {
         loadItems()
@@ -94,24 +37,12 @@ public class ClipboardManager: ObservableObject {
         )
 
         // Darwin bildirimlerini dinle
-        let center = CFNotificationCenterGetDarwinNotifyCenter()
-        let observer = UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        let name = "com.ahmtcanx.clipboardmanager.dataChanged" as CFString
-
-        CFNotificationCenterAddObserver(center,
-                                      observer,
-                                      { (_, observer, name, _, _) in
-            let manager = Unmanaged<ClipboardManager>.fromOpaque(observer!).takeUnretainedValue()
-            DispatchQueue.main.async {
-                manager.loadItems()
-            }
-        },
-                                      name as CFString,
-                                      nil,
-                                      .deliverImmediately)
+        darwinNotificationManager.startObserving(observer: self) { [weak self] in
+            self?.loadItems()
+        }
 
         // Periyodik kontrol başlat
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        updateTimer = Timer.scheduledTimer(withTimeInterval: Constants.pasteboardCheckInterval, repeats: true) { [weak self] _ in
             self?.checkPasteboardChanges()
         }
 
@@ -141,9 +72,7 @@ public class ClipboardManager: ObservableObject {
                     self.saveItems()
 
                     // Darwin bildirimini zorla gönder
-                    let center = CFNotificationCenterGetDarwinNotifyCenter()
-                    let name = "com.ahmtcanx.clipboardmanager.dataChanged" as CFString
-                    CFNotificationCenterPostNotification(center, CFNotificationName(name), nil, nil, true)
+                    self.darwinNotificationManager.postNotification()
                 }
             }
         }
@@ -170,7 +99,7 @@ public class ClipboardManager: ObservableObject {
 
         clipboardItems.insert(item, at: 0)
 
-        if clipboardItems.count > maxItems {
+        if clipboardItems.count > Constants.maxClipboardItems {
             clipboardItems.removeLast()
         }
 
@@ -179,7 +108,7 @@ public class ClipboardManager: ObservableObject {
     }
 
     public func loadItems() {
-        if let data = userDefaults?.data(forKey: "clipboardItems"),
+        if let data = userDefaults?.data(forKey: Constants.clipboardItemsKey),
            let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) {
             clipboardItems = items
             lastCopiedText = items.first?.text
@@ -188,7 +117,7 @@ public class ClipboardManager: ObservableObject {
 
     public func saveItems() {
         if let data = try? JSONEncoder().encode(clipboardItems) {
-            userDefaults?.set(data, forKey: "clipboardItems")
+            userDefaults?.set(data, forKey: Constants.clipboardItemsKey)
             userDefaults?.synchronize()
 
             // Veri değişikliğini hemen bildir
@@ -196,9 +125,7 @@ public class ClipboardManager: ObservableObject {
                 self.notifyClipboardChanged()
 
                 // Darwin bildirimini de gönder
-                let center = CFNotificationCenterGetDarwinNotifyCenter()
-                let name = "com.ahmtcanx.clipboardmanager.dataChanged" as CFString
-                CFNotificationCenterPostNotification(center, CFNotificationName(name), nil, nil, true)
+                self.darwinNotificationManager.postNotification()
             }
         }
     }
@@ -221,7 +148,7 @@ public class ClipboardManager: ObservableObject {
 
             // Ana uygulamaya ve klavye eklentisine özel bildirim gönder
             DispatchQueue.main.async {
-                NotificationCenter.default.post(name: ClipboardManager.clipboardChangedNotification, object: nil, userInfo: ["action": "delete", "itemId": item.id.uuidString])
+                NotificationCenter.default.post(name: .clipboardManagerDataChanged, object: nil, userInfo: ["action": "delete", "itemId": item.id.uuidString])
             }
         }
     }
@@ -236,13 +163,13 @@ public class ClipboardManager: ObservableObject {
 
     public func clearAllItems() {
         clipboardItems.removeAll()
-        userDefaults?.removeObject(forKey: "clipboardItems")
+        userDefaults?.removeObject(forKey: Constants.clipboardItemsKey)
         notifyClipboardChanged()
     }
 
     private func notifyClipboardChanged() {
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: ClipboardManager.clipboardChangedNotification, object: nil)
+            NotificationCenter.default.post(name: .clipboardManagerDataChanged, object: nil)
 
             // Değişiklikleri hemen yükle
             self.loadItems()
@@ -255,24 +182,6 @@ public class ClipboardManager: ObservableObject {
     deinit {
         updateTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
-
-        // Darwin observer'ı temizle
-        let center = CFNotificationCenterGetDarwinNotifyCenter()
-        let observer = UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())
-        CFNotificationCenterRemoveObserver(center, observer, nil, nil)
-    }
-
-    public static func determineCategory(for text: String) -> ItemCategory {
-        if text.contains("@") && text.contains(".") {
-            return .email
-        } else if text.contains("http") || text.contains("www") || text.contains("://") {
-            return .link
-        } else if text.filter({ $0.isNumber }).count > 8 {
-            return .phone
-        } else if text.count < 20 {
-            return .short
-        } else {
-            return .text
-        }
+        darwinNotificationManager.stopObserving()
     }
 }
