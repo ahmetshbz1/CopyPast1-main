@@ -37,7 +37,7 @@ class KeyboardSetupManager {
         ])
         
         viewController.view.heightAnchor.constraint(equalToConstant: 274).isActive = true
-        hostingController.view.transform = .identity
+        hostingController.view.transform = CGAffineTransform.identity
     }
     
     func setupTapGesture() {

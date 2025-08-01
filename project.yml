@@ -17,6 +17,7 @@ targets:
     platform: iOS
     sources:
       - ClipboardManager
+      - Shared
     info:
       path: Info.plist
       properties:
@@ -45,17 +46,9 @@ targets:
     platform: iOS
     sources:
       - KeyboardExtension
-      - ClipboardManager/ClipboardManager.swift
-      - ClipboardManager/Models
-      - ClipboardManager/Views/Components/ItemContentView.swift
-      - ClipboardManager/Views/Components/ToastView.swift
-      - ClipboardManager/Views/Components/AnimatedBackground.swift
-      - ClipboardManager/Views/Components/CategoryButton.swift
-      - ClipboardManager/Utilities/Constants.swift
-      - ClipboardManager/Utilities/CategoryDeterminer.swift
-      - ClipboardManager/Utilities/DateHelper.swift
-      - ClipboardManager/Managers/DarwinNotificationManager.swift
-      - ClipboardManager/Extensions/NotificationExtensions.swift
+      - Shared
+      - KeyboardExtension/Managers
+      - KeyboardExtension/Views
     info:
       path: KeyboardExtension/Info.plist
       properties:

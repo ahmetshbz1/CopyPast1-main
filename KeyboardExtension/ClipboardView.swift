@@ -67,7 +67,14 @@ struct ClipboardView: View {
 // MARK: - Computed Properties Extension
 extension ClipboardManager {
     var filteredItems: [ClipboardItem] {
-        getItemsByCategory(selectedCategory)
+        switch selectedCategory {
+        case .all:
+            return clipboardItems
+        case .pinned:
+            return clipboardItems.filter { $0.isPinned }
+        default:
+            return clipboardItems.filter { $0.category == selectedCategory }
+        }
     }
 }
 

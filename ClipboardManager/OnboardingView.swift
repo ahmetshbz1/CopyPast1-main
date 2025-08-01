@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct OnboardingView: View {
+    @ObservedObject var onboardingManager: OnboardingManager
     @State private var currentIndex = 0
     @State private var keyboardPermissionGranted = false
     @State private var backgroundRefreshGranted = false
@@ -93,7 +94,7 @@ struct OnboardingView: View {
                 description: "Artık CopyPast'ı kullanmaya başlayabilirsiniz. Kopyaladığınız her şey güvenle saklanacak.",
                 buttonTitle: "Başlayalım",
                 buttonAction: {
-                    OnboardingManager.shared.markOnboardingCompleted()
+                    onboardingManager.completeOnboarding()
                 },
                 secondaryDescription: nil
             )
@@ -121,5 +122,5 @@ struct OnboardingView: View {
 }
 
 #Preview {
-    OnboardingView()
+    OnboardingView(onboardingManager: OnboardingManager())
 }
