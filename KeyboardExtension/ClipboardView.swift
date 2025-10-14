@@ -7,10 +7,7 @@ struct ClipboardView: View {
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
-        ZStack {
-            AnimatedBackground()
-            
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
                 KeyboardHeaderView(
                     onDismiss: onDismiss,
                     onReturn: { onItemSelected("\n") },
@@ -25,7 +22,6 @@ struct ClipboardView: View {
                     onItemSelected: onItemSelected
                 )
             }
-        }
         .onAppear {
             setupNotificationObserver()
         }
@@ -39,18 +35,18 @@ struct ClipboardView: View {
                         category: category,
                         isSelected: clipboardManager.selectedCategory == category,
                         onTap: {
-                            withAnimation {
+                            withAnimation(.spring(response: 0.3)) {
                                 clipboardManager.selectedCategory = category
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                HapticManager.trigger(.selection)
                             }
                         }
                     )
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .background(colorScheme == .dark ? Color.black.opacity(0.1) : Color.white.opacity(0.7))
+        .frame(height: 50)
     }
     
     private func setupNotificationObserver() {

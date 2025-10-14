@@ -15,7 +15,6 @@ struct KeyboardHeaderView: View {
             returnButton
             deleteButton
         }
-        .background(colorScheme == .dark ? Color.black.opacity(0.2) : Color.white)
     }
     
     private var dismissButton: some View {

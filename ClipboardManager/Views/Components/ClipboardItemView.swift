@@ -6,12 +6,13 @@ struct ClipboardItemView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isPressed = false
     @State private var showEditSheet = false
+    @State private var showQRCode = false
     @State private var editedText = ""
     @StateObject private var clipboardManager = ClipboardManager.shared
     
     var body: some View {
         Button(action: {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            HapticManager.trigger(.medium)
             UIPasteboard.general.string = item.text
             clipboardManager.registerUsage(byText: item.text)
             showToastMessage("Kopyalandı")
@@ -24,6 +25,9 @@ struct ClipboardItemView: View {
         }
         .sheet(isPresented: $showEditSheet) {
             EditItemSheet(item: item, editedText: $editedText, showEditSheet: $showEditSheet)
+        }
+        .sheet(isPresented: $showQRCode) {
+            QRCodeView(text: item.text, showQRCode: $showQRCode)
         }
     }
     
@@ -64,6 +68,10 @@ struct ClipboardItemView: View {
                 }
             } label: {
                 Label("Farklı Kopyala...", systemImage: "doc.on.doc")
+            }
+            
+            Button(action: { showQRCode = true }) {
+                Label("QR Kod Oluştur", systemImage: "qrcode")
             }
             
             Button(action: {

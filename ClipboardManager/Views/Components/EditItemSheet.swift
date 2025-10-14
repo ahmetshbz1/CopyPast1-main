@@ -209,12 +209,14 @@ struct EditItemSheet: View {
             if !currentTags.isEmpty {
                 FlowLayout(spacing: 8) {
                     ForEach(currentTags, id: \.self) { tag in
+                        let tagColor = TagColorPalette.colorForTag(tag)
                         HStack(spacing: 6) {
                             Text("#\(tag)")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                             Button(action: { 
                                 withAnimation(.spring(response: 0.3)) {
+                                    HapticManager.trigger(.soft)
                                     removeTag(tag)
                                 }
                             }) {
@@ -226,13 +228,9 @@ struct EditItemSheet: View {
                         .padding(.vertical, 7)
                         .background(
                             Capsule()
-                                .fill(Color.blue.opacity(0.1))
+                                .fill(tagColor.gradient)
                         )
-                        .foregroundColor(.blue)
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.blue.opacity(0.2), lineWidth: 1)
-                        )
+                        .foregroundColor(.white)
                     }
                 }
             } else if !showTagInput {

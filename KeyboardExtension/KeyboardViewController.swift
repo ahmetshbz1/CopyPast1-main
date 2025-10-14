@@ -76,7 +76,10 @@ class KeyboardViewController: UIInputViewController {
     
     private func configureKeyboardHeight() {
         if let inputView = view as? UIInputView {
-            inputView.frame.size.height = 291
+            let screenHeight = UIScreen.main.bounds.height
+            let keyboardHeight = screenHeight * 0.5
+            inputView.frame.size.height = keyboardHeight
+            inputView.allowsSelfSizing = true
         }
     }
 }

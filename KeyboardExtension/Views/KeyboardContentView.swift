@@ -18,19 +18,18 @@ struct KeyboardContentView: View {
     }
     
     private var emptyStateView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 60))
-                .foregroundColor(.blue.opacity(0.6))
-                .shadow(color: .blue.opacity(0.1), radius: 10, x: 0, y: 5)
+                .font(.system(size: 50))
+                .foregroundColor(.secondary.opacity(0.5))
             
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text("Henüz Hiç Öğe Yok")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(.primary)
                 
                 Text("Bir şeyler kopyaladığınızda burada görünecek")
-                    .font(.system(size: 16))
+                    .font(.system(size: 14))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
@@ -41,18 +40,17 @@ struct KeyboardContentView: View {
     }
     
     private var filteredEmptyView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             Image(systemName: clipboardManager.selectedCategory.icon)
-                .font(.system(size: 50))
-                .foregroundColor(clipboardManager.selectedCategory.color.opacity(0.6))
-                .shadow(color: clipboardManager.selectedCategory.color.opacity(0.1), radius: 10, x: 0, y: 5)
+                .font(.system(size: 40))
+                .foregroundColor(clipboardManager.selectedCategory.color.opacity(0.5))
             
             Text("Bu Kategoride Öğe Yok")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.primary)
             
             Text("\(clipboardManager.selectedCategory.rawValue) kategorisinde henüz öğe bulunmuyor")
-                .font(.system(size: 14))
+                .font(.system(size: 13))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -83,6 +81,16 @@ struct KeyboardContentView: View {
                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                     Button {
                         withAnimation {
+                            toggleFavorite(item)
+                        }
+                    } label: {
+                        Label(item.isFavorite ? "Favoriden Çıkar" : "Favorile", 
+                              systemImage: item.isFavorite ? "star.fill" : "star")
+                    }
+                    .tint(.yellow)
+                    
+                    Button {
+                        withAnimation {
                             togglePin(item)
                         }
                     } label: {
@@ -94,7 +102,7 @@ struct KeyboardContentView: View {
             }
         }
         .listStyle(.plain)
-        .background(Color.clear)
+        .scrollContentBackground(.hidden)
     }
     
     private func deleteItem(_ item: ClipboardItem) {
@@ -103,5 +111,9 @@ struct KeyboardContentView: View {
     
     private func togglePin(_ item: ClipboardItem) {
         clipboardManager.togglePinItem(item)
+    }
+    
+    private func toggleFavorite(_ item: ClipboardItem) {
+        clipboardManager.toggleFavoriteItem(item)
     }
 }

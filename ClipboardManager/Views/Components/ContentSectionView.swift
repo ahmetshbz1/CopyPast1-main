@@ -22,7 +22,7 @@ struct ContentSectionView: View {
     
     private var itemsList: some View {
         List {
-            ForEach(filteredItems) { item in
+            ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
                 ClipboardItemView(
                     item: item,
                     showToastMessage: showToastMessage
@@ -30,6 +30,11 @@ struct ContentSectionView: View {
                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.8).combined(with: .opacity),
+                    removal: .scale(scale: 0.8).combined(with: .opacity)
+                ))
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: filteredItems.count)
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
                         withAnimation {

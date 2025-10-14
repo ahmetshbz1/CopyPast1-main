@@ -36,7 +36,10 @@ class KeyboardSetupManager {
             hostingController.view.bottomAnchor.constraint(equalTo: viewController.view.bottomAnchor)
         ])
         
-        viewController.view.heightAnchor.constraint(equalToConstant: 274).isActive = true
+        // Ekranın %50'si kadar yükseklik
+        let screenHeight = UIScreen.main.bounds.height
+        let keyboardHeight = screenHeight * 0.5
+        viewController.view.heightAnchor.constraint(equalToConstant: keyboardHeight).isActive = true
         hostingController.view.transform = CGAffineTransform.identity
     }
     

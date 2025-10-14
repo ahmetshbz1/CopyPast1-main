@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var toastMessage = ""
     @State private var showAboutSheet = false
     @State private var showSettings = false
+    @State private var showStatistics = false
     @State private var searchText = ""
     @Environment(\.colorScheme) private var colorScheme
     
@@ -56,6 +57,9 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(showSettings: $showSettings)
         }
+        .sheet(isPresented: $showStatistics) {
+            StatisticsView(showStatistics: $showStatistics)
+        }
     }
     
     private var mainContentView: some View {
@@ -103,7 +107,18 @@ struct ContentView: View {
                         }
                     }
                     
-                    Button(action: { showSettings = true }) {
+                    Button(action: { 
+                        HapticManager.trigger(.light)
+                        showStatistics = true 
+                    }) {
+                        Image(systemName: "chart.bar.fill")
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                    
+                    Button(action: { 
+                        HapticManager.trigger(.light)
+                        showSettings = true 
+                    }) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 16, weight: .medium))
                     }

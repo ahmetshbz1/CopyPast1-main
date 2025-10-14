@@ -53,14 +53,15 @@ struct ItemContentView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(item.tags, id: \.self) { tag in
+                                    let tagColor = TagColorPalette.colorForTag(tag)
                                     Text("#\(tag)")
                                         .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(.blue)
+                                        .foregroundColor(.white)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
                                         .background(
                                             Capsule()
-                                                .fill(Color.blue.opacity(0.1))
+                                                .fill(tagColor.gradient)
                                         )
                                 }
                             }

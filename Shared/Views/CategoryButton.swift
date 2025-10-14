@@ -10,14 +10,14 @@ struct CategoryButton: View {
         Button(action: onTap) {
             HStack(spacing: 6) {
                 Image(systemName: category.icon)
-                    .font(.system(size: 13))
+                    .font(.system(size: 14))
                 
                 Text(category.rawValue)
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                    .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
             }
             .foregroundColor(isSelected ? .white : category.color)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected
