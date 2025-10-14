@@ -17,6 +17,8 @@ struct ContentView: View {
         if clipboardManager.selectedCategory != .all {
             if clipboardManager.selectedCategory == .pinned {
                 items = items.filter { $0.isPinned }
+            } else if clipboardManager.selectedCategory == .favorite {
+                items = items.filter { $0.isFavorite }
             } else {
                 items = items.filter { $0.category == clipboardManager.selectedCategory }
             }

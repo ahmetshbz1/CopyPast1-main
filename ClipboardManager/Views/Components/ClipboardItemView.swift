@@ -13,6 +13,7 @@ struct ClipboardItemView: View {
         Button(action: {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             UIPasteboard.general.string = item.text
+            clipboardManager.registerUsage(byText: item.text)
             showToastMessage("Kopyalandı")
         }) {
             ItemContentView(item: item, colorScheme: colorScheme)
@@ -38,6 +39,15 @@ struct ClipboardItemView: View {
             }
             
             Button(action: {
+                withAnimation {
+                    toggleFavorite(item)
+                }
+            }) {
+                Label(item.isFavorite ? "Favorilerden Çıkar" : "Favorilere Ekle",
+                      systemImage: item.isFavorite ? "star.slash" : "star")
+            }
+            
+            Button(action: {
                 editedText = item.text
                 showEditSheet = true
             }) {
@@ -60,10 +70,11 @@ struct ClipboardItemView: View {
     }
     
     private func togglePin(_ item: ClipboardItem) {
-        if let index = clipboardManager.clipboardItems.firstIndex(where: { $0.id == item.id }) {
-            clipboardManager.clipboardItems[index].isPinned.toggle()
-            clipboardManager.saveItems()
-        }
+        clipboardManager.togglePinItem(item)
+    }
+    
+    private func toggleFavorite(_ item: ClipboardItem) {
+        clipboardManager.toggleFavoriteItem(item)
     }
     
     private func deleteItem(_ item: ClipboardItem) {

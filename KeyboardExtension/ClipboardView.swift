@@ -72,6 +72,8 @@ extension ClipboardManager {
             return clipboardItems
         case .pinned:
             return clipboardItems.filter { $0.isPinned }
+        case .favorite:
+            return clipboardItems.filter { $0.isFavorite }
         default:
             return clipboardItems.filter { $0.category == selectedCategory }
         }

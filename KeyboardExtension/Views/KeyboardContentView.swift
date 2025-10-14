@@ -102,6 +102,6 @@ struct KeyboardContentView: View {
     }
     
     private func togglePin(_ item: ClipboardItem) {
-        // TODO: Implement pin functionality
+        clipboardManager.togglePinItem(item)
     }
 }

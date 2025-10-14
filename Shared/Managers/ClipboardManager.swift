@@ -37,6 +37,15 @@ public class ClipboardManager: ObservableObject {
         NotificationCenter.default.post(name: .clipboardItemAdded, object: nil)
     }
     
+    // Kullanım istatistikleri
+    public func registerUsage(byText text: String) {
+        if let index = clipboardItems.firstIndex(where: { $0.text == text }) {
+            clipboardItems[index].usageCount += 1
+            clipboardItems[index].lastUsedDate = Date()
+            saveItems()
+        }
+    }
+    
     public func loadItems() {
         if let data = userDefaults?.data(forKey: Constants.clipboardItemsKey),
            let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) {
@@ -77,6 +86,40 @@ public class ClipboardManager: ObservableObject {
     public func togglePinItem(_ item: ClipboardItem) {
         if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
             clipboardItems[index].isPinned.toggle()
+            saveItems()
+            notifyClipboardChanged()
+        }
+    }
+    
+    public func toggleFavoriteItem(_ item: ClipboardItem) {
+        if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
+            clipboardItems[index].isFavorite.toggle()
+            saveItems()
+            notifyClipboardChanged()
+        }
+    }
+    
+    public func addTag(_ tag: String, to item: ClipboardItem) {
+        if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
+            if !clipboardItems[index].tags.contains(tag) {
+                clipboardItems[index].tags.append(tag)
+                saveItems()
+                notifyClipboardChanged()
+            }
+        }
+    }
+    
+    public func removeTag(_ tag: String, from item: ClipboardItem) {
+        if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
+            clipboardItems[index].tags.removeAll { $0 == tag }
+            saveItems()
+            notifyClipboardChanged()
+        }
+    }
+    
+    public func updateNote(_ note: String?, for item: ClipboardItem) {
+        if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
+            clipboardItems[index].note = note
             saveItems()
             notifyClipboardChanged()
         }

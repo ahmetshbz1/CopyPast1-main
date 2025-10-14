@@ -6,6 +6,7 @@ struct ItemContentView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Üst bar: kategori, favori, zaman
             HStack(spacing: 8) {
                 Image(systemName: item.category.icon)
                     .font(.system(size: 16))
@@ -15,17 +16,74 @@ struct ItemContentView: View {
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
                 
+                if item.isFavorite {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.yellow)
+                }
+                
                 Spacer()
+                
+                // Kullanım sayısı (varsa)
+                if item.usageCount > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 11))
+                        Text("\(item.usageCount)")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(.green.opacity(0.7))
+                }
                 
                 Text(timeAgoDisplay(date: item.date))
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
             }
             
+            // Metin içeriği
             Text(item.text)
                 .lineLimit(2)
                 .font(.system(size: 16))
                 .foregroundColor(.primary)
+            
+            // Etiketler ve not göstergesi
+            if !item.tags.isEmpty || item.note != nil {
+                HStack(spacing: 8) {
+                    if !item.tags.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(item.tags, id: \.self) { tag in
+                                    Text("#\(tag)")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.blue)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            Capsule()
+                                                .fill(Color.blue.opacity(0.1))
+                                        )
+                                }
+                            }
+                        }
+                    }
+                    
+                    if item.note != nil {
+                        HStack(spacing: 3) {
+                            Image(systemName: "note.text")
+                                .font(.system(size: 11))
+                            Text("Not")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .foregroundColor(.orange.opacity(0.8))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color.orange.opacity(0.1))
+                        )
+                    }
+                }
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

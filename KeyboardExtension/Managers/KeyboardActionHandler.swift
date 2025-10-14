@@ -15,6 +15,7 @@ class KeyboardActionHandler {
             viewController.textDocumentProxy.deleteBackward()
         } else {
             viewController.textDocumentProxy.insertText(text)
+            viewController.clipboardManager.registerUsage(byText: text)
         }
     }
     

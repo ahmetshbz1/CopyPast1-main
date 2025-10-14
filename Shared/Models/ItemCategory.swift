@@ -8,6 +8,8 @@ public enum ItemCategory: String, Codable, CaseIterable {
     case email = "E-posta"
     case phone = "Telefon"
     case short = "Kısa"
+    case code = "Kod"
+    case favorite = "Favoriler"
     
     var icon: String {
         switch self {
@@ -18,6 +20,8 @@ public enum ItemCategory: String, Codable, CaseIterable {
         case .email: return "envelope.fill"
         case .phone: return "phone.fill"
         case .short: return "character"
+        case .code: return "chevron.left.slash.chevron.right"
+        case .favorite: return "star.fill"
         }
     }
     
@@ -30,6 +34,8 @@ public enum ItemCategory: String, Codable, CaseIterable {
         case .email: return .blue
         case .phone: return .purple
         case .short: return .gray
+        case .code: return .indigo
+        case .favorite: return .yellow
         }
     }
 }
