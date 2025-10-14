@@ -11,9 +11,12 @@ struct SettingsView: View {
     @State private var showClearOldAlert = false
     @State private var showClearUnpinnedAlert = false
     @State private var itemsToDelete = 0
-    @State private var showExportActivity = false
+    @State private var showExportPicker = false
     @State private var showImportPicker = false
-    @State private var exportFileURL: URL?
+    @State private var exportDocument: BackupDocument?
+    @State private var showSuccessAlert = false
+    @State private var showErrorAlert = false
+    @State private var alertMessage = ""
     
     var body: some View {
         NavigationView {
@@ -49,7 +52,7 @@ struct SettingsView: View {
                 // Otomatik temizleme
                 Section {
                     Toggle(isOn: $enableAutoDelete) {
-                        Label("Otomatik Temizleme", systemImage: "trash.clock")
+                        Label("Otomatik Temizleme", systemImage: "clock.badge.xmark")
                     }
                     .tint(.red)
                     
@@ -184,10 +187,25 @@ struct SettingsView: View {
                 let count = clipboardManager.clipboardItems.filter { !$0.isPinned && !$0.isFavorite }.count
                 Text("Sabitsiz ve favori olmayan \(count) öğe silinecek. Bu işlem geri alınamaz!")
             }
-            .sheet(isPresented: $showExportActivity) {
-                if let url = exportFileURL {
-                    ActivityViewController(activityItems: [url])
+            .fileExporter(
+                isPresented: $showExportPicker,
+                document: exportDocument,
+                contentType: .json,
+                defaultFilename: BackupManager.generateBackupFileName()
+            ) { result in
+                switch result {
+                case .success(let url):
+                    print("File saved to: \(url)")
+                    alertMessage = "Veriler başarıyla dışa aktarıldı"
+                    showSuccessAlert = true
+                    HapticManager.trigger(.success)
+                case .failure(let error):
+                    print("Export error: \(error)")
+                    alertMessage = "Dışa aktarma başarısız: \(error.localizedDescription)"
+                    showErrorAlert = true
+                    HapticManager.trigger(.error)
                 }
+                exportDocument = nil
             }
             .fileImporter(
                 isPresented: $showImportPicker,
@@ -195,6 +213,16 @@ struct SettingsView: View {
                 allowsMultipleSelection: false
             ) { result in
                 handleImport(result: result)
+            }
+            .alert("Başarılı", isPresented: $showSuccessAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text(alertMessage)
+            }
+            .alert("Hata", isPresented: $showErrorAlert) {
+                Button("Tamam", role: .cancel) { }
+            } message: {
+                Text(alertMessage)
             }
         }
     }
@@ -248,13 +276,21 @@ struct SettingsView: View {
     }
     
     private func exportData() {
+        guard !clipboardManager.clipboardItems.isEmpty else {
+            alertMessage = "Dışa aktarılacak öğe yok"
+            showErrorAlert = true
+            HapticManager.trigger(.warning)
+            return
+        }
+        
         do {
-            let url = try BackupManager.createTemporaryBackupFile(items: clipboardManager.clipboardItems)
-            exportFileURL = url
-            showExportActivity = true
-            HapticManager.trigger(.success)
+            let data = try BackupManager.exportToJSON(items: clipboardManager.clipboardItems)
+            exportDocument = BackupDocument(data: data)
+            showExportPicker = true
         } catch {
             print("Export error: \(error)")
+            alertMessage = "Dışa aktarma sırasında bir hata oluştu: \(error.localizedDescription)"
+            showErrorAlert = true
             HapticManager.trigger(.error)
         }
     }
@@ -263,9 +299,20 @@ struct SettingsView: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
+            
+            // Güvenlik kapsamlı dosya erişimi
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            
             importData(from: url)
         case .failure(let error):
             print("Import picker error: \(error)")
+            alertMessage = "Dosya seçimi sırasında bir hata oluştu: \(error.localizedDescription)"
+            showErrorAlert = true
             HapticManager.trigger(.error)
         }
     }
@@ -275,17 +322,48 @@ struct SettingsView: View {
             let data = try Data(contentsOf: url)
             let items = try BackupManager.importFromJSON(data: data)
             
+            var newItemsCount = 0
+            var duplicateCount = 0
+            
             // Mevcut itemlara ekle (duplicate kontrolü yaparak)
             for item in items {
                 if !clipboardManager.clipboardItems.contains(where: { $0.id == item.id }) {
                     clipboardManager.clipboardItems.append(item)
+                    newItemsCount += 1
+                } else {
+                    duplicateCount += 1
                 }
             }
             
             clipboardManager.saveItems()
-            HapticManager.triggerCombo([.success, .light])
+            
+            // Başarı mesajı
+            if newItemsCount > 0 {
+                alertMessage = "\(newItemsCount) öğe başarıyla içe aktarıldı."
+                if duplicateCount > 0 {
+                    alertMessage += "\n\(duplicateCount) öğe zaten mevcut olduğu için atlandı."
+                }
+                showSuccessAlert = true
+                HapticManager.triggerCombo([.success, .light])
+            } else {
+                alertMessage = "Tüm öğeler zaten mevcut. Yeni öğe eklenmedi."
+                showErrorAlert = true
+                HapticManager.trigger(.warning)
+            }
+        } catch DecodingError.keyNotFound(let key, let context) {
+            print("Import decode error - missing key: \(key), context: \(context)")
+            alertMessage = "Dosya formatı hatalı. Eksik alan: \(key.stringValue)"
+            showErrorAlert = true
+            HapticManager.trigger(.error)
+        } catch DecodingError.typeMismatch(let type, let context) {
+            print("Import decode error - type mismatch: \(type), context: \(context)")
+            alertMessage = "Dosya formatı uyumsuz. Geçersiz veri tipi bulundu."
+            showErrorAlert = true
+            HapticManager.trigger(.error)
         } catch {
             print("Import error: \(error)")
+            alertMessage = "İçe aktarma sırasında bir hata oluştu: \(error.localizedDescription)"
+            showErrorAlert = true
             HapticManager.trigger(.error)
         }
     }
@@ -294,6 +372,7 @@ struct SettingsView: View {
 // MARK: - ActivityViewController Wrapper
 struct ActivityViewController: UIViewControllerRepresentable {
     let activityItems: [Any]
+    var onComplete: (() -> Void)? = nil
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(
@@ -301,15 +380,33 @@ struct ActivityViewController: UIViewControllerRepresentable {
             applicationActivities: nil
         )
         
+        // Completion handler
+        controller.completionWithItemsHandler = { _, completed, _, error in
+            if let error = error {
+                print("Share error: \(error)")
+            }
+            if completed {
+                print("Share completed successfully")
+            }
+            onComplete?()
+        }
+        
         // iPad için popover ayarı
         if let popover = controller.popoverPresentationController {
             popover.sourceView = UIView()
-            popover.sourceRect = CGRect(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY, width: 0, height: 0)
+            popover.sourceRect = CGRect(
+                x: UIScreen.main.bounds.midX,
+                y: UIScreen.main.bounds.midY,
+                width: 0,
+                height: 0
+            )
             popover.permittedArrowDirections = []
         }
         
         return controller
     }
     
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        // Güncelleme gerekmiyor
+    }
 }

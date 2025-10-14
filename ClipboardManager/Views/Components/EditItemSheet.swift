@@ -53,7 +53,7 @@ struct EditItemSheet: View {
                 .safeAreaInset(edge: .bottom) {
                     Color.clear.frame(height: keyboard.keyboardHeight)
                 }
-                .onChange(of: focusedField) { newValue in
+                .onChange(of: focusedField) { oldValue, newValue in
                     withAnimation(.easeOut(duration: 0.3)) {
                         if let field = newValue {
                             scrollProxy.scrollTo(field, anchor: .center)
