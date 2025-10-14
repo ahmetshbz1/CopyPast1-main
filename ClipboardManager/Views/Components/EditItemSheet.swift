@@ -15,31 +15,32 @@ struct EditItemSheet: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 16) {
                     // İstatistikler
                     statsView
+                        .padding(.horizontal)
                     
                     // Düzenleyici
-                    TextEditor(text: $editedText)
-                        .padding(8)
-                        .frame(minHeight: 150, maxHeight: 200)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                        )
+                    textEditorSection
+                        .padding(.horizontal)
                     
                     // Dönüşüm araçları
                     transformToolbar
                     
                     Divider()
+                        .padding(.horizontal)
                     
                     // Etiketler bölümü
                     tagsSection
+                        .padding(.horizontal)
                     
                     // Not bölümü
                     noteSection
+                        .padding(.horizontal)
+                    
+                    Spacer(minLength: 20)
                 }
-                .padding()
+                .padding(.vertical)
             }
             .navigationTitle("Metni Düzenle")
             .navigationBarTitleDisplayMode(.inline)
@@ -68,15 +69,41 @@ struct EditItemSheet: View {
                 .font(.footnote)
                 .foregroundColor(.secondary)
             Divider()
+                .frame(height: 12)
             Label("\(editedText.wordCount) kelime", systemImage: "character.cursor.ibeam")
                 .font(.footnote)
                 .foregroundColor(.secondary)
             Divider()
+                .frame(height: 12)
             Label("\(editedText.lineCount) satır", systemImage: "text.justify")
                 .font(.footnote)
                 .foregroundColor(.secondary)
         }
-        .padding(.horizontal)
+    }
+    
+    private var textEditorSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Metin İçeriği")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
+            
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(UIColor.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                    )
+                
+                TextEditor(text: $editedText)
+                    .padding(8)
+                    .frame(minHeight: 120)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
+            }
+            .frame(height: 150)
+        }
     }
     
     private var transformToolbar: some View {
@@ -96,97 +123,184 @@ struct EditItemSheet: View {
     }
     
     private var tagsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Etiketler", systemImage: "tag.fill")
-                    .font(.headline)
+                Text("Etiketler")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
                 Spacer()
-                Button(action: { showTagInput.toggle() }) {
-                    Image(systemName: "plus.circle.fill")
+                Button(action: { 
+                    withAnimation(.spring(response: 0.3)) {
+                        showTagInput.toggle()
+                    }
+                }) {
+                    Label(showTagInput ? "İptal" : "Ekle", systemImage: showTagInput ? "xmark.circle.fill" : "plus.circle.fill")
+                        .font(.subheadline)
                         .foregroundColor(.blue)
                 }
             }
             
             if showTagInput {
-                HStack {
-                    TextField("Yeni etiket", text: $newTag)
-                        .textFieldStyle(.roundedBorder)
-                        .autocapitalization(.none)
+                HStack(spacing: 12) {
+                    Image(systemName: "tag")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.secondary)
                     
-                    Button("Ekle") {
-                        addTag()
+                    TextField("Etiket adı girin...", text: $newTag, onCommit: addTag)
+                        .font(.system(size: 16))
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                    
+                    if !newTag.isEmpty {
+                        Button(action: { newTag = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Button(action: addTag) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.blue)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(newTag.trimmed().isEmpty)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(UIColor.systemBackground))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.blue.opacity(0.3), lineWidth: 1.5)
+                        )
+                )
+                .transition(.scale.combined(with: .opacity))
             }
             
             if !currentTags.isEmpty {
                 FlowLayout(spacing: 8) {
                     ForEach(currentTags, id: \.self) { tag in
-                        HStack(spacing: 4) {
+                        HStack(spacing: 6) {
                             Text("#\(tag)")
                                 .font(.subheadline)
-                            Button(action: { removeTag(tag) }) {
+                                .fontWeight(.medium)
+                            Button(action: { 
+                                withAnimation(.spring(response: 0.3)) {
+                                    removeTag(tag)
+                                }
+                            }) {
                                 Image(systemName: "xmark.circle.fill")
-                                    .font(.caption)
+                                    .font(.system(size: 14))
                             }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.blue.opacity(0.1))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            Capsule()
+                                .fill(Color.blue.opacity(0.1))
+                        )
                         .foregroundColor(.blue)
-                        .cornerRadius(16)
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+                        )
                     }
                 }
-            } else {
-                Text("Henüz etiket eklenmemiş")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            } else if !showTagInput {
+                HStack {
+                    Image(systemName: "tag")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("Etiket eklemek için + butonuna dokunun")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
             }
         }
-        .padding()
-        .background(Color.secondary.opacity(0.05))
-        .cornerRadius(12)
     }
     
     private var noteSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Not", systemImage: "note.text")
-                    .font(.headline)
+                Text("Not")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
                 Spacer()
-                Button(showNoteEditor ? "Gizle" : "Düzenle") {
-                    showNoteEditor.toggle()
+                Button(action: {
+                    withAnimation(.spring(response: 0.3)) {
+                        showNoteEditor.toggle()
+                    }
+                }) {
+                    Label(showNoteEditor ? "Kapat" : "Düzenle", systemImage: showNoteEditor ? "chevron.up.circle.fill" : "pencil.circle.fill")
+                        .font(.subheadline)
+                        .foregroundColor(.orange)
                 }
-                .font(.caption)
             }
             
             if showNoteEditor {
-                TextEditor(text: $currentNote)
-                    .frame(height: 80)
-                    .padding(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
+                VStack(spacing: 0) {
+                    ZStack(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(UIColor.systemBackground))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.orange.opacity(0.3), lineWidth: 1.5)
+                            )
+                        
+                        TextEditor(text: $currentNote)
+                            .padding(12)
+                            .frame(height: 100)
+                            .scrollContentBackground(.hidden)
+                            .background(Color.clear)
+                            .font(.system(size: 15))
+                        
+                        if currentNote.isEmpty {
+                            Text("Notunuzu buraya yazın...")
+                                .foregroundColor(.secondary.opacity(0.5))
+                                .padding(.horizontal, 16)
+                                .padding(.top, 20)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .frame(height: 100)
+                }
+                .transition(.scale.combined(with: .opacity))
             } else if !currentNote.isEmpty {
-                Text(currentNote)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.05))
-                    .cornerRadius(8)
-            } else {
-                Text("Henüz not eklenmemiş")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 14))
+                        .foregroundColor(.orange)
+                        .padding(.top, 2)
+                    
+                    Text(currentNote)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.orange.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+                )
+            } else if !showNoteEditor {
+                HStack {
+                    Image(systemName: "note.text")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("Not eklemek için düzenle butonuna dokunun")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
             }
         }
-        .padding()
-        .background(Color.secondary.opacity(0.05))
-        .cornerRadius(12)
     }
     
     private func addTag() {
