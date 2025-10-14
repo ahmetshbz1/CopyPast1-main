@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var showToast = false
     @State private var toastMessage = ""
     @State private var showAboutSheet = false
+    @State private var showSettings = false
     @State private var searchText = ""
     @Environment(\.colorScheme) private var colorScheme
     
@@ -51,6 +52,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showAboutSheet) {
             AboutView(showAboutSheet: $showAboutSheet)
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(showSettings: $showSettings)
         }
     }
     
@@ -97,6 +101,11 @@ struct ContentView: View {
                                 .foregroundColor(.red)
                                 .font(.system(size: 16, weight: .medium))
                         }
+                    }
+                    
+                    Button(action: { showSettings = true }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 16, weight: .medium))
                     }
                     
                     Menu {

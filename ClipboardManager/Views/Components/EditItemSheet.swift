@@ -11,11 +11,19 @@ struct EditItemSheet: View {
     @State private var newTag: String = ""
     @State private var showTagInput: Bool = false
     @State private var showNoteEditor: Bool = false
+    @FocusState private var focusedField: Field?
+    @StateObject private var keyboard = KeyboardObserver()
+    
+    enum Field: Hashable {
+        case tagInput
+        case noteEditor
+    }
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: 16) {
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(spacing: 16) {
                     // İstatistikler
                     statsView
                         .padding(.horizontal)
@@ -38,9 +46,20 @@ struct EditItemSheet: View {
                     noteSection
                         .padding(.horizontal)
                     
-                    Spacer(minLength: 20)
+                        Spacer(minLength: 20)
+                    }
+                    .padding(.vertical)
                 }
-                .padding(.vertical)
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: keyboard.keyboardHeight)
+                }
+                .onChange(of: focusedField) { newValue in
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        if let field = newValue {
+                            scrollProxy.scrollTo(field, anchor: .center)
+                        }
+                    }
+                }
             }
             .navigationTitle("Metni Düzenle")
             .navigationBarTitleDisplayMode(.inline)
@@ -150,6 +169,7 @@ struct EditItemSheet: View {
                         .font(.system(size: 16))
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
+                        .focused($focusedField, equals: .tagInput)
                     
                     if !newTag.isEmpty {
                         Button(action: { newTag = "" }) {
@@ -176,6 +196,14 @@ struct EditItemSheet: View {
                         )
                 )
                 .transition(.scale.combined(with: .opacity))
+                .id(Field.tagInput)
+                .onAppear {
+                    if showTagInput {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            focusedField = .tagInput
+                        }
+                    }
+                }
             }
             
             if !currentTags.isEmpty {
@@ -255,6 +283,7 @@ struct EditItemSheet: View {
                             .scrollContentBackground(.hidden)
                             .background(Color.clear)
                             .font(.system(size: 15))
+                            .focused($focusedField, equals: .noteEditor)
                         
                         if currentNote.isEmpty {
                             Text("Notunuzu buraya yazın...")
@@ -266,7 +295,15 @@ struct EditItemSheet: View {
                     }
                     .frame(height: 100)
                 }
+                .id(Field.noteEditor)
                 .transition(.scale.combined(with: .opacity))
+                .onAppear {
+                    if showNoteEditor {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            focusedField = .noteEditor
+                        }
+                    }
+                }
             } else if !currentNote.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "note.text")

@@ -47,11 +47,36 @@ struct ClipboardItemView: View {
                       systemImage: item.isFavorite ? "star.slash" : "star")
             }
             
+            Divider()
+            
+            Menu {
+                Button(action: { copyAs(.uppercase) }) {
+                    Label("Büyük Harf Kopyala", systemImage: "textformat.size.larger")
+                }
+                Button(action: { copyAs(.lowercase) }) {
+                    Label("Küçük Harf Kopyala", systemImage: "textformat.size.smaller")
+                }
+                Button(action: { copyAs(.firstLine) }) {
+                    Label("İlk Satırı Kopyala", systemImage: "text.alignleft")
+                }
+                Button(action: { copyAs(.lastLine) }) {
+                    Label("Son Satırı Kopyala", systemImage: "text.alignright")
+                }
+            } label: {
+                Label("Farklı Kopyala...", systemImage: "doc.on.doc")
+            }
+            
             Button(action: {
                 editedText = item.text
                 showEditSheet = true
             }) {
                 Label("Düzenle", systemImage: "pencil")
+            }
+            
+            Divider()
+            
+            Button(action: shareItem) {
+                Label("Paylaş", systemImage: "square.and.arrow.up")
             }
             
             Button(action: {
@@ -62,10 +87,6 @@ struct ClipboardItemView: View {
                 Label("Sil", systemImage: "trash")
             }
             .tint(.red)
-            
-            Button(action: shareItem) {
-                Label("Paylaş", systemImage: "square.and.arrow.up")
-            }
         }
     }
     
@@ -80,6 +101,36 @@ struct ClipboardItemView: View {
     private func deleteItem(_ item: ClipboardItem) {
         clipboardManager.clipboardItems.removeAll(where: { $0.id == item.id })
         clipboardManager.saveItems()
+    }
+    
+    private enum CopyMode {
+        case uppercase, lowercase, firstLine, lastLine
+    }
+    
+    private func copyAs(_ mode: CopyMode) {
+        let textToCopy: String
+        switch mode {
+        case .uppercase:
+            textToCopy = item.text.uppercasedTr()
+        case .lowercase:
+            textToCopy = item.text.lowercasedTr()
+        case .firstLine:
+            textToCopy = item.text.firstLine
+        case .lastLine:
+            textToCopy = item.text.lastLine
+        }
+        
+        UIPasteboard.general.string = textToCopy
+        clipboardManager.registerUsage(byText: item.text)
+        
+        let message: String
+        switch mode {
+        case .uppercase: message = "Büyük harfle kopyalandı"
+        case .lowercase: message = "Küçük harfle kopyalandı"
+        case .firstLine: message = "İlk satır kopyalandı"
+        case .lastLine: message = "Son satır kopyalandı"
+        }
+        showToastMessage(message)
     }
     
     private func shareItem() {

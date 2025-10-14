@@ -49,6 +49,16 @@ struct ContentSectionView: View {
                               systemImage: item.isPinned ? "pin.slash" : "pin")
                     }
                     .tint(.blue)
+                    
+                    Button {
+                        withAnimation {
+                            toggleFavorite(item)
+                        }
+                    } label: {
+                        Label(item.isFavorite ? "Çıkar" : "Favori",
+                              systemImage: item.isFavorite ? "star.slash" : "star")
+                    }
+                    .tint(.yellow)
                 }
             }
         }
@@ -58,5 +68,9 @@ struct ContentSectionView: View {
         .refreshable {
             clipboardManager.loadItems()
         }
+    }
+    
+    private func toggleFavorite(_ item: ClipboardItem) {
+        clipboardManager.toggleFavoriteItem(item)
     }
 }

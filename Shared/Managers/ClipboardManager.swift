@@ -30,8 +30,21 @@ public class ClipboardManager: ObservableObject {
         
         clipboardItems.insert(item, at: 0)
         
-        if clipboardItems.count > Constants.maxClipboardItems {
-            clipboardItems.removeLast()
+        // Ayarlardan max item sayısını al, yoksa default kullan
+        let maxItems = UserDefaults.standard.integer(forKey: "maxClipboardItems")
+        let limit = maxItems > 0 ? maxItems : Constants.maxClipboardItems
+        
+        if clipboardItems.count > limit {
+            // Fazla öğeleri sil ama sabitli ve favori olanları koru
+            let excess = clipboardItems.count - limit
+            let removableItems = clipboardItems
+                .enumerated()
+                .filter { !$0.element.isPinned && !$0.element.isFavorite }
+                .suffix(excess)
+            
+            for (_, item) in removableItems {
+                clipboardItems.removeAll { $0.id == item.id }
+            }
         }
         
         NotificationCenter.default.post(name: .clipboardItemAdded, object: nil)
