@@ -45,10 +45,12 @@ targets:
     type: app-extension
     platform: iOS
     sources:
-      - KeyboardExtension
-      - Shared
-      - KeyboardExtension/Managers
-      - KeyboardExtension/Views
+      - path: KeyboardExtension
+      - path: Shared
+        excludes:
+          - Services/ShortcutsManager.swift
+      - path: KeyboardExtension/Managers
+      - path: KeyboardExtension/Views
     info:
       path: KeyboardExtension/Info.plist
       properties:

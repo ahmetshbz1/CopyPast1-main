@@ -1,4 +1,6 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import Security
 
 struct ClipboardItemView: View {
     let item: ClipboardItem
@@ -68,6 +70,33 @@ struct ClipboardItemView: View {
                 }
             } label: {
                 Label("Farklı Kopyala...", systemImage: "doc.on.doc")
+            }
+            
+            // AI İşlemleri
+            Menu {
+                Button(action: { aiSummarize() }) {
+                    Label("Özetle", systemImage: "text.alignleft")
+                }
+                Menu {
+                    Button(action: { aiTranslate(to: "English") }) { Text("İngilizce") }
+                    Button(action: { aiTranslate(to: "Turkish") }) { Text("Türkçe") }
+                } label: {
+                    Label("Çevir", systemImage: "globe")
+                }
+                Menu {
+                    Button(action: { aiImprove(style: .formal) }) { Text("Resmi") }
+                    Button(action: { aiImprove(style: .casual) }) { Text("Günlük") }
+                    Button(action: { aiImprove(style: .business) }) { Text("İş") }
+                    Button(action: { aiImprove(style: .academic) }) { Text("Akademik") }
+                    Button(action: { aiImprove(style: .creative) }) { Text("Yaratıcı") }
+                } label: {
+                    Label("İyileştir", systemImage: "wand.and.stars")
+                }
+                Button(action: { aiExtractKeywords() }) {
+                    Label("Anahtar Kelime Çıkar", systemImage: "tag")
+                }
+            } label: {
+                Label("Yapay Zeka", systemImage: "brain.head.profile")
             }
             
             Button(action: { showQRCode = true }) {
@@ -153,6 +182,104 @@ struct ClipboardItemView: View {
         if let rootVC = window.rootViewController {
             activityVC.popoverPresentationController?.sourceView = rootVC.view
             rootVC.present(activityVC, animated: true)
+        }
+    }
+}
+
+// MARK: - AI Helpers
+extension ClipboardItemView {
+    private func readAPIKey() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.ahmtcanx.clipboardmanager",
+            kSecAttrAccount as String: "openai_api_key",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var res: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &res)
+        if status != errSecSuccess { return nil }
+        guard let data = res as? Data, let key = String(data: data, encoding: .utf8) else { return nil }
+        return key
+    }
+    
+    private func aiSummarize() {
+        guard let key = readAPIKey(), !key.isEmpty else {
+            showToastMessage("OpenAI API anahtarı gerekli (Ayarlar > Yapay Zeka)")
+            return
+        }
+        Task { @MainActor in
+            do {
+                let service = OpenAIService(apiKey: key)
+                let summary = try await service.summarizeText(item.text)
+                // Özet yeni bir öğe olarak eklensin
+                ClipboardManager.shared.addItem(summary)
+                ClipboardManager.shared.saveItems()
+                showToastMessage("Özet eklendi")
+            } catch {
+                showToastMessage("Özetleme başarısız")
+            }
+        }
+    }
+    
+    private func aiTranslate(to language: String) {
+        guard let key = readAPIKey(), !key.isEmpty else {
+            showToastMessage("OpenAI API anahtarı gerekli (Ayarlar > Yapay Zeka)")
+            return
+        }
+        Task { @MainActor in
+            do {
+                let service = OpenAIService(apiKey: key)
+                let translated = try await service.translateText(item.text, to: language)
+                ClipboardManager.shared.addItem(translated)
+                ClipboardManager.shared.saveItems()
+                showToastMessage("Çeviri eklendi")
+            } catch {
+                showToastMessage("Çeviri başarısız")
+            }
+        }
+    }
+    
+    private func aiImprove(style: TextStyle) {
+        guard let key = readAPIKey(), !key.isEmpty else {
+            showToastMessage("OpenAI API anahtarı gerekli (Ayarlar > Yapay Zeka)")
+            return
+        }
+        Task { @MainActor in
+            do {
+                let service = OpenAIService(apiKey: key)
+                let improved = try await service.improveText(item.text, style: style)
+                ClipboardManager.shared.addItem(improved)
+                ClipboardManager.shared.saveItems()
+                showToastMessage("Metin iyileştirildi")
+            } catch {
+                showToastMessage("İyileştirme başarısız")
+            }
+        }
+    }
+    
+    private func aiExtractKeywords() {
+        guard let key = readAPIKey(), !key.isEmpty else {
+            showToastMessage("OpenAI API anahtarı gerekli (Ayarlar > Yapay Zeka)")
+            return
+        }
+        Task { @MainActor in
+            do {
+                let service = OpenAIService(apiKey: key)
+                let keywords = try await service.extractKeywords(item.text)
+                // Etiketlere ekle
+                var added = 0
+                for k in keywords {
+                    if !ClipboardManager.shared.clipboardItems.first(where: { $0.id == item.id })!.tags.contains(k) {
+                        ClipboardManager.shared.addTag(k, to: item)
+                        added += 1
+                    }
+                }
+                ClipboardManager.shared.saveItems()
+                showToastMessage(added > 0 ? "\(added) etiket eklendi" : "Yeni etiket yok")
+            } catch {
+                showToastMessage("Anahtar kelime çıkarma başarısız")
+            }
         }
     }
 }

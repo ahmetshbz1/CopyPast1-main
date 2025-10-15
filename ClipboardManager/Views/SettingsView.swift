@@ -1,4 +1,5 @@
 import SwiftUI
+import Security
 
 struct SettingsView: View {
     @Binding var showSettings: Bool
@@ -145,6 +146,15 @@ struct SettingsView: View {
                     Text("\(autoDeleteDays) günden eski \(itemsToDelete) öğe silinecek")
                 }
                 
+                // Yapay Zeka ayarları
+                Section {
+                    AISettingsSection()
+                } header: {
+                    Text("Yapay Zeka")
+                } footer: {
+                    Text("OpenAI API anahtarınızı güvenli şekilde saklayın ve metin işlemleri için kullanın")
+                }
+                
                 // Uygulama bilgisi
                 Section {
                     HStack {
@@ -225,6 +235,94 @@ struct SettingsView: View {
                 Text(alertMessage)
             }
         }
+    }
+    
+    // MARK: - AI Settings Section (inline)
+    @ViewBuilder private func AISettingsSection() -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SecureField("OpenAI API Key", text: $aiApiKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .font(.system(size: 14))
+            
+            HStack {
+                Button {
+                    do {
+                        try setAIApiKey(aiApiKey)
+                        showToastInline(text: "API anahtarı kaydedildi")
+                    } catch {
+                        showToastInline(text: "Kaydetme başarısız")
+                    }
+                } label: {
+                    Label("Kaydet", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                
+                Button(role: .destructive) {
+                    do {
+                        try removeAIApiKey()
+                        aiApiKey = ""
+                        showToastInline(text: "API anahtarı silindi")
+                    } catch {
+                        showToastInline(text: "Silme başarısız")
+                    }
+                } label: {
+                    Label("Temizle", systemImage: "trash")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .onAppear {
+            if let key = try? getAIApiKey() { aiApiKey = key ?? "" }
+        }
+        .padding(.vertical, 4)
+    }
+    
+    @State private var aiApiKey: String = ""
+    
+    private func showToastInline(text: String) {
+        // Ayarlarda basit bir görsel geribildirim için Alert yerine log; istersen snackbar ekleyebiliriz
+        print(text)
+    }
+    
+    // Keychain helpers (inline)
+    private func setAIApiKey(_ value: String) throws {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.ahmtcanx.clipboardmanager",
+            kSecAttrAccount as String: "openai_api_key"
+        ]
+        SecItemDelete(query as CFDictionary)
+        var attrs = query
+        attrs[kSecValueData as String] = data
+        let status = SecItemAdd(attrs as CFDictionary, nil)
+        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+    }
+    
+    private func getAIApiKey() throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.ahmtcanx.clipboardmanager",
+            kSecAttrAccount as String: "openai_api_key",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var res: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &res)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        guard let data = res as? Data, let str = String(data: data, encoding: .utf8) else { return nil }
+        return str
+    }
+    
+    private func removeAIApiKey() throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.ahmtcanx.clipboardmanager",
+            kSecAttrAccount as String: "openai_api_key"
+        ]
+        SecItemDelete(query as CFDictionary)
     }
     
     private func calculateOldItems() {

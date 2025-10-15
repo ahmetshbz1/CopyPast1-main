@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showAboutSheet = false
     @State private var showSettings = false
     @State private var showStatistics = false
+    @State private var showOCRSheet = false
     @State private var searchText = ""
     @Environment(\.colorScheme) private var colorScheme
     
@@ -59,6 +60,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showStatistics) {
             StatisticsView(showStatistics: $showStatistics)
+        }
+        .sheet(isPresented: $showOCRSheet) {
+            ImageOCRView(isPresented: $showOCRSheet)
         }
     }
     
@@ -142,6 +146,12 @@ struct ContentView: View {
                         Divider()
                         
                         Button(action: {
+                            showOCRSheet = true
+                        }) {
+                            Label("Görselden Metin", systemImage: "text.viewfinder")
+                        }
+                        
+                        Button(action: {
                             showAboutSheet = true
                         }) {
                             Label("Hakkında", systemImage: "info.circle")
@@ -199,6 +209,126 @@ extension ContentView {
     
     func clearAllItems() {
         clipboardManager.clearAllItems()
+    }
+}
+
+// MARK: - Image OCR View (inline)
+import PhotosUI
+
+struct ImageOCRView: View {
+    @Binding var isPresented: Bool
+    @State private var selectedItem: PhotosPickerItem?
+    @State private var isProcessing = false
+    @State private var errorMessage: String?
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 16) {
+                PhotosPicker(selection: $selectedItem, matching: .images, photoLibrary: .shared()) {
+                    Label("Görsel Seç", systemImage: "photo")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isProcessing)
+                
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button {
+                        isShowingCamera = true
+                    } label: {
+                        Label("Kamera ile Çek", systemImage: "camera")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                
+                if isProcessing { ProgressView("İşleniyor...") }
+                if let errorMessage { Text(errorMessage).foregroundColor(.red).font(.footnote) }
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Görselden Metin")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Kapat") { isPresented = false }
+                }
+            }
+            .sheet(isPresented: $isShowingCamera) {
+                CameraPicker { image in
+                    if let data = image.jpegData(compressionQuality: 0.9) {
+                        Task { await handleImageData(data) }
+                    }
+                }
+            }
+            .onChange(of: selectedItem) { _, newItem in
+                guard let newItem else { return }
+                Task { await handleSelection(item: newItem) }
+            }
+        }
+    }
+    
+    @State private var isShowingCamera = false
+    
+    @MainActor
+    private func handleSelection(item: PhotosPickerItem) async {
+        isProcessing = true
+        defer { isProcessing = false }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                errorMessage = "Görsel okunamadı"
+                return
+            }
+            await handleImageData(data)
+            return
+        } catch {
+            errorMessage = "OCR başarısız: \(error.localizedDescription)"
+        }
+    }
+    
+    @MainActor
+    private func handleImageData(_ data: Data) async {
+        do {
+            let ocrText = try await MediaProcessor().extractTextFromImage(data)
+            guard !ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                errorMessage = "Metin bulunamadı"
+                return
+            }
+            ClipboardManager.shared.addItem(ocrText)
+            ClipboardManager.shared.saveItems()
+            isPresented = false
+        } catch {
+            errorMessage = "OCR başarısız: \(error.localizedDescription)"
+        }
+    }
+    
+}
+
+// MARK: - Camera Picker
+import UIKit
+
+struct CameraPicker: UIViewControllerRepresentable {
+    var onImage: (UIImage) -> Void
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator { Coordinator(onImage: onImage) }
+    
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let onImage: (UIImage) -> Void
+        init(onImage: @escaping (UIImage) -> Void) { self.onImage = onImage }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let img = info[.originalImage] as? UIImage { onImage(img) }
+            picker.dismiss(animated: true)
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
     }
 }
 
