@@ -551,6 +551,7 @@ struct ImageCropOCRView: View {
     @State private var dragStart: CGPoint = .zero
     @State private var isProcessing = false
     @State private var errorMessage: String?
+    @State private var imageFrame: CGRect = .zero
     
     @Environment(\.dismiss) private var dismiss
     
@@ -560,12 +561,21 @@ struct ImageCropOCRView: View {
                 Color.black.ignoresSafeArea()
                 
                 GeometryReader { geometry in
+                    let displaySize = calculateImageDisplaySize(containerSize: geometry.size)
+                    let displayOrigin = CGPoint(
+                        x: (geometry.size.width - displaySize.width) / 2,
+                        y: (geometry.size.height - displaySize.height) / 2
+                    )
+                    
                     ZStack {
                         // Orijinal fotoğraf
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFit()
                             .frame(width: geometry.size.width, height: geometry.size.height)
+                            .onAppear {
+                                imageFrame = CGRect(origin: displayOrigin, size: displaySize)
+                            }
                         
                         // Karartma overlay (seçilen alan hariç)
                         if cropRect != .zero {
@@ -583,7 +593,7 @@ struct ImageCropOCRView: View {
                             .gesture(
                                 DragGesture(minimumDistance: 0)
                                     .onChanged { value in
-                                        handleDrag(value: value, in: geometry.size)
+                                        handleDrag(value: value, imageFrame: imageFrame)
                                     }
                                     .onEnded { _ in
                                         isDragging = false
@@ -668,7 +678,7 @@ struct ImageCropOCRView: View {
     
     // MARK: - Drag Handling
     
-    private func handleDrag(value: DragGesture.Value, in size: CGSize) {
+    private func handleDrag(value: DragGesture.Value, imageFrame: CGRect) {
         if !isDragging {
             isDragging = true
             dragStart = value.location
@@ -682,11 +692,11 @@ struct ImageCropOCRView: View {
         let width = abs(currentPoint.x - dragStart.x)
         let height = abs(currentPoint.y - dragStart.y)
         
-        // Sınırları kontrol et
-        let constrainedX = max(0, min(x, size.width))
-        let constrainedY = max(0, min(y, size.height))
-        let constrainedWidth = min(width, size.width - constrainedX)
-        let constrainedHeight = min(height, size.height - constrainedY)
+        // Image frame sınırları içinde tut
+        let constrainedX = max(imageFrame.minX, min(x, imageFrame.maxX))
+        let constrainedY = max(imageFrame.minY, min(y, imageFrame.maxY))
+        let constrainedWidth = min(width, imageFrame.maxX - constrainedX)
+        let constrainedHeight = min(height, imageFrame.maxY - constrainedY)
         
         cropRect = CGRect(
             x: constrainedX,
@@ -694,6 +704,24 @@ struct ImageCropOCRView: View {
             width: constrainedWidth,
             height: constrainedHeight
         )
+    }
+    
+    private func calculateImageDisplaySize(containerSize: CGSize) -> CGSize {
+        let imageSize = image.size
+        let imageAspect = imageSize.width / imageSize.height
+        let containerAspect = containerSize.width / containerSize.height
+        
+        if imageAspect > containerAspect {
+            // Image daha geniş - width'e sığdır
+            let width = containerSize.width
+            let height = width / imageAspect
+            return CGSize(width: width, height: height)
+        } else {
+            // Image daha uzun - height'a sığdır
+            let height = containerSize.height
+            let width = height * imageAspect
+            return CGSize(width: width, height: height)
+        }
     }
     
     private func resetSelection() {
@@ -749,32 +777,38 @@ struct ImageCropOCRView: View {
         }
     }
     
-    private func cropImage(_ image: UIImage, to rect: CGRect) -> UIImage {
-        // UIImage coordinate system'e çevir
-        let scale = image.scale
-        let imageSize = CGSize(
-            width: image.size.width * scale,
-            height: image.size.height * scale
-        )
-        
-        // Görüntüdeki gerçek koordinatları hesapla
+    private func cropImage(_ image: UIImage, to viewRect: CGRect) -> UIImage {
         guard let cgImage = image.cgImage else { return image }
+        guard imageFrame != .zero else { return image }
         
-        let scaleX = imageSize.width / (image.size.width)
-        let scaleY = imageSize.height / (image.size.height)
+        // Image'ın gerçek pixel boyutları
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+        
+        // viewRect'i imageFrame'e göre normalize et
+        let normalizedX = (viewRect.origin.x - imageFrame.origin.x) / imageFrame.width
+        let normalizedY = (viewRect.origin.y - imageFrame.origin.y) / imageFrame.height
+        let normalizedWidth = viewRect.width / imageFrame.width
+        let normalizedHeight = viewRect.height / imageFrame.height
+        
+        // Normalize edilmiş koordinatları pixel koordinatlarına çevir
+        let cropX = normalizedX * imageWidth
+        let cropY = normalizedY * imageHeight
+        let cropWidth = normalizedWidth * imageWidth
+        let cropHeight = normalizedHeight * imageHeight
         
         let cropRect = CGRect(
-            x: rect.origin.x * scaleX,
-            y: rect.origin.y * scaleY,
-            width: rect.size.width * scaleX,
-            height: rect.size.height * scaleY
+            x: max(0, cropX),
+            y: max(0, cropY),
+            width: min(cropWidth, imageWidth - cropX),
+            height: min(cropHeight, imageHeight - cropY)
         )
         
         guard let croppedCGImage = cgImage.cropping(to: cropRect) else {
             return image
         }
         
-        return UIImage(cgImage: croppedCGImage, scale: scale, orientation: image.imageOrientation)
+        return UIImage(cgImage: croppedCGImage, scale: image.scale, orientation: image.imageOrientation)
     }
 }
 
