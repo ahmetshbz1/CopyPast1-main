@@ -2,6 +2,22 @@ import SwiftUI
 import UIKit
 import AVFoundation
 
+// Lightweight performance logger
+fileprivate enum Perf {
+    private static var marks: [String: TimeInterval] = [:]
+    private static func now() -> TimeInterval { Date().timeIntervalSince1970 }
+    static func mark(_ key: String) { marks[key] = now(); print("[PERF] mark \(key)") }
+    static func since(_ key: String, _ label: String) {
+        guard let t = marks[key] else { print("[PERF] \(label): missing mark \(key)"); return }
+        let dt = now() - t
+        print("[PERF] \(label): \(String(format: "%.3f", dt))s")
+    }
+    static func between(_ start: String, _ end: String, _ label: String) {
+        guard let s = marks[start], let e = marks[end] else { print("[PERF] \(label): missing marks \(start)/\(end)"); return }
+        print("[PERF] \(label): \(String(format: "%.3f", e - s))s")
+    }
+}
+
 struct ContentView: View {
     @StateObject private var clipboardManager = ClipboardManager.shared
     @StateObject private var onboardingManager = OnboardingManager()
@@ -268,12 +284,14 @@ struct ImageOCRView: View {
                     Button("Kapat") { isPresented = false }
                 }
             }
-            .sheet(isPresented: $isShowingCamera, onDismiss: {
+.sheet(isPresented: $isShowingCamera, onDismiss: {
+                Perf.since("camera.sheet.dismiss.start", "camera: sheet dismiss animation")
                 print("[DEBUG] Sheet dismiss edildi, capturedImage: \(capturedImage != nil)")
                 if capturedImage != nil {
                     print("[DEBUG] Crop view açılıyor...")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         print("[DEBUG] showCropView = true")
+                        Perf.mark("crop.toggle.true")
                         showCropView = true
                     }
                 }
@@ -298,6 +316,8 @@ struct ImageOCRView: View {
                             capturedImage = nil
                         }
                     )
+                    .onAppear { Perf.since("crop.toggle.true", "crop: present delay") }
+                    .interactiveDismissDisabled(true)
                 }
             }
             .onChange(of: selectedItem) { _, newItem in
@@ -311,17 +331,27 @@ struct ImageOCRView: View {
     
     @MainActor
     private func handleSelection(item: PhotosPickerItem) async {
+        Perf.mark("gallery.select.start")
         isProcessing = true
         defer { isProcessing = false }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data) else {
+            let loadStart = Date().timeIntervalSince1970
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                errorMessage = "Görsel okunamadı"
+                return
+            }
+            // Decode'u background thread'de yap
+            let decodeStart = Date().timeIntervalSince1970
+            let image = try await Task.detached(priority: .userInitiated) { UIImage(data: data) }.value
+            let decodeEnd = Date().timeIntervalSince1970
+            print("[PERF] gallery: load transferable \(String(format: "%.3f", decodeStart - loadStart))s, decode \(String(format: "%.3f", decodeEnd - decodeStart))s")
+            guard let image else {
                 errorMessage = "Görsel okunamadı"
                 return
             }
             capturedImage = image
-            // SwiftUI render cycle'dan sonra aç
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                Perf.mark("crop.toggle.true")
                 showCropView = true
             }
         } catch {
@@ -531,15 +561,26 @@ struct InlineCustomCameraView: View {
                     Button { controller.switchCamera() } label: { Image(systemName: "arrow.triangle.2.circlepath.camera").padding(14).background(.ultraThinMaterial, in: Circle()) }
                     Spacer()
                     Button { 
+                        Perf.mark("camera.capture.tap")
                         controller.capture { data in 
+                            Perf.since("camera.capture.tap", "camera: capture→data")
                             // Background'da decode et
                             DispatchQueue.global(qos: .userInitiated).async {
-                                if let img = UIImage(data: data) { 
+                                let t0 = Date().timeIntervalSince1970
+                                let img = UIImage(data: data)
+                                let t1 = Date().timeIntervalSince1970
+                                print("[PERF] camera: decode time \(String(format: "%.3f", t1 - t0))s (data=\(data.count) bytes)")
+                                if let img = img {
                                     DispatchQueue.main.async { 
+                                        Perf.mark("camera.sheet.dismiss.start")
                                         onCapture(img)
                                         dismiss() 
                                     } 
-                                } 
+                                } else {
+                                    DispatchQueue.main.async {
+                                        print("[PERF] camera: decode failed")
+                                    }
+                                }
                             }
                         } 
                     } label: {
@@ -608,17 +649,27 @@ struct ImageCropOCRView: View {
                             CropRectangle(rect: cropRect)
                                 .allowsHitTesting(false)
                         }
-                    }
-                    .contentShape(Rectangle())
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                handleDrag(value: value, imageFrame: imageFrame)
-                            }
-                            .onEnded { _ in
+                        
+                        // Touch capture overlay (gesture sorunlarını aşmak için UIKit tabanlı)
+                        TouchCaptureView(
+                            onStart: { point in
+                                print("[DEBUG] drag start at: \(Int(point.x))x\(Int(point.y))")
+                                Perf.mark("crop.drag.start")
+                                isDragging = true
+                                dragStart = point
+                                cropRect = CGRect(origin: dragStart, size: .zero)
+                            },
+                            onChange: { point in
+                                updateCropRect(currentPoint: point, imageFrame: imageFrame)
+                            },
+                            onEnd: {
                                 isDragging = false
+                                Perf.since("crop.drag.start", "crop: drag duration")
+                                print("[DEBUG] drag end rect: \(Int(cropRect.width))x\(Int(cropRect.height))")
                             }
-                    )
+                        )
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                    }
                 }
                 
                 // İşlem durumu
@@ -695,17 +746,9 @@ struct ImageCropOCRView: View {
         }
     }
     
-    // MARK: - Drag Handling
+    // MARK: - Drag Handling (UIKit touch overlay ile)
     
-    private func handleDrag(value: DragGesture.Value, imageFrame: CGRect) {
-        if !isDragging {
-            isDragging = true
-            dragStart = value.location
-            cropRect = CGRect(origin: dragStart, size: .zero)
-        }
-        
-        let currentPoint = value.location
-        
+    private func updateCropRect(currentPoint: CGPoint, imageFrame: CGRect) {
         let x = min(dragStart.x, currentPoint.x)
         let y = min(dragStart.y, currentPoint.y)
         let width = abs(currentPoint.x - dragStart.x)
@@ -752,6 +795,8 @@ struct ImageCropOCRView: View {
     // MARK: - OCR Processing
     
     private func processOCR() {
+        print("[PERF] ocr: start")
+        let t0 = Date().timeIntervalSince1970
         guard cropRect != .zero else { return }
         
         isProcessing = true
@@ -772,6 +817,8 @@ struct ImageCropOCRView: View {
                 }
                 
                 let ocrText = try await MediaProcessor().extractTextFromImage(imageData)
+                let t1 = Date().timeIntervalSince1970
+                print("[PERF] ocr: duration \(String(format: "%.3f", t1 - t0))s, cropped size=\(Int(croppedImage.size.width))x\(Int(croppedImage.size.height))")
                 
                 await MainActor.run {
                     guard !ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -797,6 +844,7 @@ struct ImageCropOCRView: View {
     }
     
     private func cropImage(_ image: UIImage, to viewRect: CGRect) -> UIImage {
+        print("[DEBUG] cropImage: image=\(Int(image.size.width))x\(Int(image.size.height)) frame=\(Int(imageFrame.origin.x)),\(Int(imageFrame.origin.y)) \(Int(imageFrame.size.width))x\(Int(imageFrame.size.height)) viewRect=\(Int(viewRect.origin.x)),\(Int(viewRect.origin.y)) \(Int(viewRect.size.width))x\(Int(viewRect.size.height))")
         guard let cgImage = image.cgImage else { return image }
         guard imageFrame != .zero else { return image }
         
@@ -832,6 +880,52 @@ struct ImageCropOCRView: View {
 }
 
 // MARK: - Supporting Views
+
+// UIKit tabanlı touch capture (SwiftUI gesture çakışmalarını bypass)
+final class TouchCaptureUIView: UIView {
+    var onStart: ((CGPoint) -> Void)?
+    var onChange: ((CGPoint) -> Void)?
+    var onEnd: (() -> Void)?
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isMultipleTouchEnabled = false
+        backgroundColor = .clear
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    
+    private func point(_ touches: Set<UITouch>) -> CGPoint? {
+        guard let t = touches.first else { return nil }
+        return t.location(in: self)
+    }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if let p = point(touches) { onStart?(p) }
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if let p = point(touches) { onChange?(p) }
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        onEnd?()
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        onEnd?()
+    }
+}
+
+struct TouchCaptureView: UIViewRepresentable {
+    let onStart: (CGPoint) -> Void
+    let onChange: (CGPoint) -> Void
+    let onEnd: () -> Void
+    
+    func makeUIView(context: Context) -> TouchCaptureUIView {
+        let v = TouchCaptureUIView()
+        v.onStart = onStart
+        v.onChange = onChange
+        v.onEnd = onEnd
+        return v
+    }
+    func updateUIView(_ uiView: TouchCaptureUIView, context: Context) {}
+}
 
 struct CropRectangle: View {
     let rect: CGRect
