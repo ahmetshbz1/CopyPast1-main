@@ -271,7 +271,7 @@ struct ImageOCRView: View {
             .sheet(isPresented: $isShowingCamera, onDismiss: {
                 // Sheet kapatıldıktan sonra crop view'ı aç
                 if capturedImage != nil {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         showCropView = true
                     }
                 }
@@ -316,7 +316,7 @@ struct ImageOCRView: View {
             }
             capturedImage = image
             // Küçük delay ile crop view aç
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 showCropView = true
             }
         } catch {
@@ -573,6 +573,7 @@ struct ImageCropOCRView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(width: geometry.size.width, height: geometry.size.height)
+                            .allowsHitTesting(false)
                             .onAppear {
                                 imageFrame = CGRect(origin: displayOrigin, size: displaySize)
                             }
@@ -580,26 +581,25 @@ struct ImageCropOCRView: View {
                         // Karartma overlay (seçilen alan hariç)
                         if cropRect != .zero {
                             DimmingOverlay(cropRect: cropRect, geometry: geometry)
+                                .allowsHitTesting(false)
                         }
                         
                         // Crop rectangle
                         if cropRect != .zero {
                             CropRectangle(rect: cropRect)
+                                .allowsHitTesting(false)
                         }
-                        
-                        // Drag gesture
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { value in
-                                        handleDrag(value: value, imageFrame: imageFrame)
-                                    }
-                                    .onEnded { _ in
-                                        isDragging = false
-                                    }
-                            )
                     }
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                handleDrag(value: value, imageFrame: imageFrame)
+                            }
+                            .onEnded { _ in
+                                isDragging = false
+                            }
+                    )
                 }
                 
                 // İşlem durumu
