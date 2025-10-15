@@ -268,18 +268,12 @@ struct ImageOCRView: View {
                     Button("Kapat") { isPresented = false }
                 }
             }
-            .sheet(isPresented: $isShowingCamera, onDismiss: {
-                // Sheet kapatıldıktan sonra crop view'ı aç
-                if capturedImage != nil {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        showCropView = true
-                    }
-                }
-            }) {
+            .sheet(isPresented: $isShowingCamera) {
                 InlineCustomCameraView { image in
                     capturedImage = image
-                    // Önce kamera sheet'ini kapat
                     isShowingCamera = false
+                    // Hemen aç
+                    showCropView = true
                 }
             }
             .fullScreenCover(isPresented: $showCropView) {
@@ -315,10 +309,7 @@ struct ImageOCRView: View {
                 return
             }
             capturedImage = image
-            // Küçük delay ile crop view aç
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                showCropView = true
-            }
+            showCropView = true
         } catch {
             errorMessage = "Görsel yüklenemedi: \(error.localizedDescription)"
         }
@@ -525,7 +516,19 @@ struct InlineCustomCameraView: View {
                 HStack {
                     Button { controller.switchCamera() } label: { Image(systemName: "arrow.triangle.2.circlepath.camera").padding(14).background(.ultraThinMaterial, in: Circle()) }
                     Spacer()
-                    Button { controller.capture { data in if let img = UIImage(data: data) { DispatchQueue.main.async { onCapture(img); dismiss() } } } } label: {
+                    Button { 
+                        controller.capture { data in 
+                            // Background'da decode et
+                            DispatchQueue.global(qos: .userInitiated).async {
+                                if let img = UIImage(data: data) { 
+                                    DispatchQueue.main.async { 
+                                        onCapture(img)
+                                        dismiss() 
+                                    } 
+                                } 
+                            }
+                        } 
+                    } label: {
                         ZStack { Circle().fill(Color.white.opacity(0.15)).frame(width: 78, height: 78); Circle().fill(Color.white).frame(width: 64, height: 64) }
                     }
                     Spacer()
@@ -559,6 +562,7 @@ struct ImageCropOCRView: View {
         NavigationView {
             ZStack {
                 Color.black.ignoresSafeArea()
+                .onTapGesture { /* Toolbar gesture'dan korun */ }
                 
                 GeometryReader { geometry in
                     let displaySize = calculateImageDisplaySize(containerSize: geometry.size)
@@ -591,7 +595,7 @@ struct ImageCropOCRView: View {
                         }
                     }
                     .contentShape(Rectangle())
-                    .gesture(
+                    .highPriorityGesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
                                 handleDrag(value: value, imageFrame: imageFrame)
