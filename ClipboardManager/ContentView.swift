@@ -268,10 +268,18 @@ struct ImageOCRView: View {
                     Button("Kapat") { isPresented = false }
                 }
             }
-            .sheet(isPresented: $isShowingCamera) {
+            .sheet(isPresented: $isShowingCamera, onDismiss: {
+                // Sheet kapatıldıktan sonra crop view'ı aç
+                if capturedImage != nil {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showCropView = true
+                    }
+                }
+            }) {
                 InlineCustomCameraView { image in
                     capturedImage = image
-                    showCropView = true
+                    // Önce kamera sheet'ini kapat
+                    isShowingCamera = false
                 }
             }
             .fullScreenCover(isPresented: $showCropView) {
@@ -307,7 +315,10 @@ struct ImageOCRView: View {
                 return
             }
             capturedImage = image
-            showCropView = true
+            // Küçük delay ile crop view aç
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                showCropView = true
+            }
         } catch {
             errorMessage = "Görsel yüklenemedi: \(error.localizedDescription)"
         }
