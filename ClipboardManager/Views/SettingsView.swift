@@ -1,5 +1,6 @@
 import SwiftUI
 import Security
+import AVKit
 
 struct SettingsView: View {
     @Binding var showSettings: Bool
@@ -18,6 +19,11 @@ struct SettingsView: View {
     @State private var showSuccessAlert = false
     @State private var showErrorAlert = false
     @State private var alertMessage = ""
+    
+    // PiP Monitoring
+    @StateObject private var pipMonitor = ClipboardPiPMonitor()
+    @AppStorage("enablePiPMonitoring") private var enablePiPMonitoring: Bool = false
+    @State private var selectedMonitoringMode: Int = 0
     
     var body: some View {
         NavigationView {
@@ -144,6 +150,69 @@ struct SettingsView: View {
                     Text("Hızlı Eylemler")
                 } footer: {
                     Text("\(autoDeleteDays) günden eski \(itemsToDelete) öğe silinecek")
+                }
+                
+                // Arka Plan İzleme (PiP)
+                if #available(iOS 15.0, *) {
+                    Section {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "pip")
+                                    .foregroundColor(.purple)
+                                    .font(.title2)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Arka Plan İzleme")
+                                        .font(.headline)
+                                    Text(pipMonitor.isMonitoring ? "Aktif" : "Pasif")
+                                        .font(.caption)
+                                        .foregroundColor(pipMonitor.isMonitoring ? .green : .secondary)
+                                }
+                                
+                                Spacer()
+                                
+                                if pipMonitor.isMonitoring {
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("📋 \(pipMonitor.itemsCaptured)")
+                                            .font(.caption.monospacedDigit())
+                                        Text(formatDuration(pipMonitor.monitoringDuration))
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                            
+                            if !pipMonitor.isMonitoring {
+                                Picker("Mod", selection: $selectedMonitoringMode) {
+                                    Text("Süresiz").tag(0)
+                                    Text("5 Dakika").tag(5)
+                                    Text("30 Dakika").tag(30)
+                                    Text("1 Saat").tag(60)
+                                }
+                                .pickerStyle(.segmented)
+                                .padding(.vertical, 4)
+                                
+                                Button(action: startPiPMonitoring) {
+                                    Label("İzlemeyi Başlat", systemImage: "play.circle.fill")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.purple)
+                            } else {
+                                Button(action: { pipMonitor.stopMonitoring() }) {
+                                    Label("İzlemeyi Durdur", systemImage: "stop.circle.fill")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                            }
+                        }
+                    } header: {
+                        Text("Background Monitoring")
+                    } footer: {
+                        Text("Picture-in-Picture teknolojisi ile uygulama kapalıyken bile clipboard'u izler. Küçük PiP penceresi açıkken tüm kopyalamalar otomatik kaydedilir.")
+                    }
                 }
                 
                 // Yapay Zeka ayarları
@@ -273,7 +342,7 @@ struct SettingsView: View {
             }
         }
         .onAppear {
-            if let key = try? getAIApiKey() { aiApiKey = key ?? "" }
+            aiApiKey = (try? getAIApiKey()) ?? ""
         }
         .padding(.vertical, 4)
     }
@@ -324,6 +393,36 @@ struct SettingsView: View {
         ]
         SecItemDelete(query as CFDictionary)
     }
+    
+    // MARK: - PiP Monitoring Helpers
+    
+    @available(iOS 15.0, *)
+    private func startPiPMonitoring() {
+        let mode: ClipboardPiPMonitor.MonitoringMode
+        
+        if selectedMonitoringMode == 0 {
+            mode = .continuous
+        } else {
+            mode = .timed(minutes: selectedMonitoringMode)
+        }
+        
+        pipMonitor.startMonitoring(mode: mode)
+        HapticManager.trigger(.success)
+    }
+    
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds) / 3600
+        let minutes = Int(seconds) / 60 % 60
+        let secs = Int(seconds) % 60
+        
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        } else {
+            return String(format: "%d:%02d", minutes, secs)
+        }
+    }
+    
+    // MARK: - Other Helpers
     
     private func calculateOldItems() {
         let cutoffDate = Calendar.current.date(byAdding: .day, value: -autoDeleteDays, to: Date()) ?? Date()

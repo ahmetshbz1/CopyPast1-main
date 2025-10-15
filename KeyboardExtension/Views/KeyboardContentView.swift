@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct KeyboardContentView: View {
-    @ObservedObject var clipboardManager: ClipboardManager
+    @ObservedObject var clipboardManager = ClipboardManager.shared
     let onItemSelected: (String) -> Void
+    @State private var itemToDelete: ClipboardItem?
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
@@ -69,11 +70,9 @@ struct KeyboardContentView: View {
                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
-                        withAnimation {
-                            deleteItem(item)
-                        }
+                        itemToDelete = item
                     } label: {
                         Label("Sil", systemImage: "trash")
                     }
@@ -103,6 +102,28 @@ struct KeyboardContentView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .confirmationDialog(
+            "Bu öğeyi silmek istediğinizden emin misiniz?",
+            isPresented: Binding(
+                get: { itemToDelete != nil },
+                set: { if !$0 { itemToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Sil", role: .destructive) {
+                if let item = itemToDelete {
+                    withAnimation {
+                        deleteItem(item)
+                    }
+                    itemToDelete = nil
+                }
+            }
+            Button("İptal", role: .cancel) {
+                itemToDelete = nil
+            }
+        } message: {
+            Text("Bu işlem geri alınamaz.")
+        }
     }
     
     private func deleteItem(_ item: ClipboardItem) {

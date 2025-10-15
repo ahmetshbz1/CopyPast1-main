@@ -1,16 +1,18 @@
 import SwiftUI
 import UIKit
+import AVFoundation
 
 struct ContentView: View {
     @StateObject private var clipboardManager = ClipboardManager.shared
     @StateObject private var onboardingManager = OnboardingManager()
     @State private var showToast = false
     @State private var toastMessage = ""
-    @State private var showAboutSheet = false
-    @State private var showSettings = false
-    @State private var showStatistics = false
-    @State private var showOCRSheet = false
     @State private var searchText = ""
+    @State private var showAboutSheet = false
+    @State private var showStatistics = false
+    @State private var showSettings = false
+    @State private var showOCRSheet = false
+    @State private var showClearAllConfirmation = false
     @Environment(\.colorScheme) private var colorScheme
     
     var filteredItems: [ClipboardItem] {
@@ -100,10 +102,7 @@ struct ContentView: View {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if !clipboardManager.clipboardItems.isEmpty {
                         Button(action: {
-                            withAnimation(.spring()) {
-                                clearAllItems()
-                                searchText = ""
-                            }
+                            showClearAllConfirmation = true
                         }) {
                             Image(systemName: "trash")
                                 .foregroundColor(.red)
@@ -164,6 +163,21 @@ struct ContentView: View {
             }
             .onTapGesture {
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+            .confirmationDialog(
+                "Tüm öğeleri silmek istediğinizden emin misiniz?",
+                isPresented: $showClearAllConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Tümünü Sil", role: .destructive) {
+                    withAnimation(.spring()) {
+                        clearAllItems()
+                        searchText = ""
+                    }
+                }
+                Button("İptal", role: .cancel) {}
+            } message: {
+                Text("\(clipboardManager.clipboardItems.count) öğe silinecek. Bu işlem geri alınamaz.")
             }
         }
     }
@@ -253,7 +267,7 @@ struct ImageOCRView: View {
                 }
             }
             .sheet(isPresented: $isShowingCamera) {
-                CameraPicker { image in
+                InlineCustomCameraView { image in
                     if let data = image.jpegData(compressionQuality: 0.9) {
                         Task { await handleImageData(data) }
                     }
@@ -302,36 +316,213 @@ struct ImageOCRView: View {
     
 }
 
-// MARK: - Camera Picker
-import UIKit
 
-struct CameraPicker: UIViewControllerRepresentable {
-    var onImage: (UIImage) -> Void
+#Preview {
+    ContentView()
+}
+
+// MARK: - Inline Custom Camera (SwiftUI + AVFoundation)
+final class InlineCameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
+    let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "inline.camera.queue")
+    private let photoOutput = AVCapturePhotoOutput()
+    @Published var torchOn = false
+    @Published var authorizationDenied = false
+    private var input: AVCaptureDeviceInput?
+    private var onPhoto: ((Data) -> Void)?
+    private var configured = false
     
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.delegate = context.coordinator
-        return picker
+    override init() {
+        super.init()
     }
     
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-    
-    func makeCoordinator() -> Coordinator { Coordinator(onImage: onImage) }
-    
-    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
-        let onImage: (UIImage) -> Void
-        init(onImage: @escaping (UIImage) -> Void) { self.onImage = onImage }
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            if let img = info[.originalImage] as? UIImage { onImage(img) }
-            picker.dismiss(animated: true)
+    private func configureIfNeeded(position: AVCaptureDevice.Position = .back) {
+        guard !configured else { log("configureIfNeeded: already configured"); return }
+        log("configureIfNeeded: begin (position=\(position == .back ? "back" : "front"))")
+        session.beginConfiguration()
+        session.sessionPreset = .photo
+        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) {
+            log("configureIfNeeded: got device=\(device.localizedName)")
+            if let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) {
+                session.addInput(input); self.input = input
+                log("configureIfNeeded: input added")
+            } else {
+                log("configureIfNeeded: failed to create/add input")
+            }
+        } else {
+            log("configureIfNeeded: no camera device")
         }
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true)
+        if session.canAddOutput(photoOutput) {
+            session.addOutput(photoOutput)
+            if #available(iOS 16.0, *) {
+                photoOutput.maxPhotoDimensions = photoOutput.maxPhotoDimensions
+            } else {
+                photoOutput.isHighResolutionCaptureEnabled = true
+            }
+            log("configureIfNeeded: photoOutput added")
+        } else {
+            log("configureIfNeeded: cannot add photoOutput")
+        }
+        session.commitConfiguration()
+        configured = true
+        log("configureIfNeeded: commit")
+    }
+    
+    func start() {
+        log("start: invoked")
+        sessionQueue.async {
+            let status = AVCaptureDevice.authorizationStatus(for: .video)
+            self.log("start: auth status = \(status.rawValue)")
+            switch status {
+            case .authorized:
+                self.configureIfNeeded()
+                if !self.session.isRunning { self.session.startRunning(); self.log("start: session started") } else { self.log("start: session already running") }
+            case .notDetermined:
+                self.log("start: requesting access")
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    self.sessionQueue.async {
+                        self.log("start: requestAccess granted=\(granted)")
+                        if granted {
+                            self.configureIfNeeded()
+                            if !self.session.isRunning { self.session.startRunning(); self.log("start: session started after grant") }
+                        } else {
+                            DispatchQueue.main.async { self.authorizationDenied = true }
+                        }
+                    }
+                }
+            default:
+                self.log("start: authorization denied/restricted")
+                DispatchQueue.main.async { self.authorizationDenied = true }
+            }
+        }
+    }
+    
+    func stop() { sessionQueue.async { if self.session.isRunning { self.session.stopRunning(); self.log("stop: session stopped") } else { self.log("stop: session not running") } } }
+    func toggleTorch() {
+        guard let device = input?.device else { log("toggleTorch: no device"); return }
+        guard device.hasTorch else { log("toggleTorch: device has no torch"); return }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = device.torchMode == .on ? .off : .on
+            torchOn = device.torchMode == .on
+            device.unlockForConfiguration()
+            log("toggleTorch: torch=\(torchOn)")
+        } catch {
+            log("toggleTorch: error=\(error.localizedDescription)")
+        }
+    }
+    func switchCamera() {
+        session.beginConfiguration()
+        let oldPos = input?.device.position ?? .back
+        if let current = input { session.removeInput(current); log("switchCamera: removed input (was=\(oldPos == .back ? "back" : "front"))") }
+        let newPos: AVCaptureDevice.Position = oldPos == .back ? .front : .back
+        if let dev = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: newPos), let newInput = try? AVCaptureDeviceInput(device: dev), session.canAddInput(newInput) {
+            session.addInput(newInput); input = newInput; log("switchCamera: added input (now=\(newPos == .back ? "back" : "front"))")
+        } else {
+            log("switchCamera: failed to add input for position=\(newPos == .back ? "back" : "front")")
+        }
+        session.commitConfiguration()
+    }
+    func capture(_ onPhoto: @escaping (Data) -> Void) {
+        self.onPhoto = onPhoto
+        let settings = AVCapturePhotoSettings()
+        if #available(iOS 16.0, *) {
+            settings.maxPhotoDimensions = photoOutput.maxPhotoDimensions
+        } else {
+            settings.isHighResolutionPhotoEnabled = true
+        }
+        if let dev = input?.device, dev.hasFlash { settings.flashMode = torchOn ? .on : .off }
+        log("capture: triggered (flash=\(torchOn))")
+        photoOutput.capturePhoto(with: settings, delegate: self)
+    }
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let error = error { log("photoOutput error=\(error.localizedDescription)"); return }
+        guard let data = photo.fileDataRepresentation() else { log("photoOutput: no data"); return }
+        log("photoOutput: got data size=\(data.count) bytes")
+        onPhoto?(data); onPhoto = nil
+    }
+    private func log(_ message: String) { print("[Camera] \(message)") }
+}
+
+final class PreviewContainerView: UIView {
+    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+    var previewLayer: AVCaptureVideoPreviewLayer { return layer as! AVCaptureVideoPreviewLayer }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        previewLayer.frame = bounds
+    }
+}
+
+struct InlineCameraPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+    func makeUIView(context: Context) -> PreviewContainerView {
+        let view = PreviewContainerView()
+        let layer = view.previewLayer
+        layer.session = session
+        layer.videoGravity = .resizeAspectFill
+        if let conn = layer.connection {
+            if #available(iOS 17.0, *) {
+                if conn.isVideoRotationAngleSupported(0) {
+                    conn.videoRotationAngle = 0
+                }
+            } else {
+                if conn.isVideoOrientationSupported {
+                    conn.videoOrientation = .portrait
+                }
+            }
+        }
+        return view
+    }
+    func updateUIView(_ uiView: PreviewContainerView, context: Context) {
+        uiView.previewLayer.session = session
+        if let conn = uiView.previewLayer.connection {
+            if #available(iOS 17.0, *) {
+                if conn.isVideoRotationAngleSupported(0) {
+                    conn.videoRotationAngle = 0
+                }
+            } else {
+                if conn.isVideoOrientationSupported {
+                    conn.videoOrientation = .portrait
+                }
+            }
         }
     }
 }
 
-#Preview {
-    ContentView()
+struct InlineCustomCameraView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var controller = InlineCameraController()
+    let onCapture: (UIImage) -> Void
+    var body: some View {
+        ZStack {
+            InlineCameraPreview(session: controller.session).ignoresSafeArea()
+            VStack {
+                if controller.authorizationDenied {
+                    Text("Kamera izni gerekli. Ayarlar > Gizlilik > Kamera üzerinden izin verin.")
+                        .font(.footnote)
+                        .foregroundColor(.white)
+                        .padding(12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.top, 20)
+                }
+                HStack {
+                    Button { dismiss() } label: { Image(systemName: "xmark").padding(10).background(.ultraThinMaterial, in: Circle()) }
+                    Spacer()
+                    Button { controller.toggleTorch() } label: { Image(systemName: controller.torchOn ? "bolt.fill" : "bolt.slash").padding(10).background(.ultraThinMaterial, in: Circle()) }
+                }.padding([.top,.horizontal], 16)
+                Spacer()
+                HStack {
+                    Button { controller.switchCamera() } label: { Image(systemName: "arrow.triangle.2.circlepath.camera").padding(14).background(.ultraThinMaterial, in: Circle()) }
+                    Spacer()
+                    Button { controller.capture { data in if let img = UIImage(data: data) { DispatchQueue.main.async { onCapture(img); dismiss() } } } } label: {
+                        ZStack { Circle().fill(Color.white.opacity(0.15)).frame(width: 78, height: 78); Circle().fill(Color.white).frame(width: 64, height: 64) }
+                    }
+                    Spacer()
+                    Color.clear.frame(width: 48, height: 48)
+                }.padding(.horizontal, 40).padding(.bottom, 28)
+            }
+        }
+        .onAppear { controller.start() }
+        .onDisappear { controller.stop() }
+    }
 }

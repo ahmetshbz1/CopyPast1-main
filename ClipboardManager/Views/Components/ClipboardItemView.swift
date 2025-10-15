@@ -10,6 +10,7 @@ struct ClipboardItemView: View {
     @State private var showEditSheet = false
     @State private var showQRCode = false
     @State private var editedText = ""
+    @State private var showDeleteConfirmation = false
     @StateObject private var clipboardManager = ClipboardManager.shared
     
     var body: some View {
@@ -30,6 +31,20 @@ struct ClipboardItemView: View {
         }
         .sheet(isPresented: $showQRCode) {
             QRCodeView(text: item.text, showQRCode: $showQRCode)
+        }
+        .confirmationDialog(
+            "Bu öğeyi silmek istediğinizden emin misiniz?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Sil", role: .destructive) {
+                withAnimation {
+                    deleteItem(item)
+                }
+            }
+            Button("İptal", role: .cancel) {}
+        } message: {
+            Text("Bu işlem geri alınamaz.")
         }
     }
     
@@ -117,9 +132,7 @@ struct ClipboardItemView: View {
             }
             
             Button(action: {
-                withAnimation {
-                    deleteItem(item)
-                }
+                showDeleteConfirmation = true
             }) {
                 Label("Sil", systemImage: "trash")
             }

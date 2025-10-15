@@ -139,7 +139,7 @@ public struct ImageMetadata: Codable {
         self.width = Int(image.size.width)
         self.height = Int(image.size.height)
         self.colorSpace = image.cgImage?.colorSpace?.name as String?
-        self.hasAlpha = image.cgImage?.alphaInfo != .none
+        self.hasAlpha = image.cgImage?.alphaInfo != CGImageAlphaInfo.none
         self.orientation = image.imageOrientation.rawValue
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
-import Vision
-import AVFoundation
+@preconcurrency import Vision
+@preconcurrency import AVFoundation
 import UniformTypeIdentifiers
 
 public protocol MediaProcessorProtocol {
@@ -83,7 +83,7 @@ public class MediaProcessor: MediaProcessorProtocol {
                 
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
                 let text = observations.compactMap { observation in
-                    try? observation.topCandidates(1).first?.string
+                    observation.topCandidates(1).first?.string
                 }.joined(separator: "\n")
                 
                 continuation.resume(returning: text)
@@ -113,29 +113,45 @@ public class MediaProcessor: MediaProcessorProtocol {
     public func compressVideo(_ url: URL, quality: VideoQuality) async throws -> URL {
         let outputURL = createTemporaryURL(for: "compressed_video.mp4")
         
-        return try await withCheckedThrowingContinuation { continuation in
-            guard let exportSession = AVAssetExportSession(
-                asset: AVAsset(url: url),
+        if #available(iOS 18.0, *) {
+            // iOS 18+ modern API
+            let asset = AVURLAsset(url: url)
+            let exportSession = AVAssetExportSession(
+                asset: asset,
                 presetName: getExportPreset(for: quality)
-            ) else {
-                continuation.resume(throwing: MediaProcessorError.processingFailed("Export session oluşturulamadı"))
-                return
-            }
-            
+            )!
             exportSession.outputURL = outputURL
             exportSession.outputFileType = .mp4
             
-            exportSession.exportAsynchronously {
-                switch exportSession.status {
-                case .completed:
-                    continuation.resume(returning: outputURL)
-                case .failed:
-                    let error = exportSession.error ?? MediaProcessorError.processingFailed("Bilinmeyen hata")
-                    continuation.resume(throwing: error)
-                case .cancelled:
-                    continuation.resume(throwing: MediaProcessorError.processingFailed("İşlem iptal edildi"))
-                default:
-                    continuation.resume(throwing: MediaProcessorError.processingFailed("Beklenmeyen durum"))
+            try await exportSession.export(to: outputURL, as: .mp4)
+            return outputURL
+        } else {
+            // iOS 17 legacy API
+            return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+                guard let exportSession = AVAssetExportSession(
+                    asset: AVAsset(url: url),
+                    presetName: getExportPreset(for: quality)
+                ) else {
+                    continuation.resume(throwing: MediaProcessorError.processingFailed("Export session oluşturulamadı"))
+                    return
+                }
+                
+                exportSession.outputURL = outputURL
+                exportSession.outputFileType = .mp4
+                
+                exportSession.exportAsynchronously {
+                    nonisolated(unsafe) let session = exportSession
+                    switch session.status {
+                    case .completed:
+                        continuation.resume(returning: outputURL)
+                    case .failed:
+                        let error = session.error ?? MediaProcessorError.processingFailed("Bilinmeyen hata")
+                        continuation.resume(throwing: error)
+                    case .cancelled:
+                        continuation.resume(throwing: MediaProcessorError.processingFailed("İşlem iptal edildi"))
+                    default:
+                        continuation.resume(throwing: MediaProcessorError.processingFailed("Beklenmeyen durum"))
+                    }
                 }
             }
         }
@@ -162,7 +178,12 @@ public class MediaProcessor: MediaProcessorProtocol {
             throw MediaProcessorError.fileNotFound
         }
         
-        let asset = AVAsset(url: url)
+        let asset: AVAsset
+        if #available(iOS 18.0, *) {
+            asset = AVURLAsset(url: url)
+        } else {
+            asset = AVAsset(url: url)
+        }
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
         imageGenerator.maximumSize = thumbnailSize

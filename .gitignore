@@ -63,4 +63,4 @@ Pods/
 # macOS
 .DS_Store
 .AppleDouble
-.LSOverride 
+.LSOverride build.log
