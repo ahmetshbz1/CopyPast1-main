@@ -268,16 +268,27 @@ struct ImageOCRView: View {
                     Button("Kapat") { isPresented = false }
                 }
             }
-            .sheet(isPresented: $isShowingCamera) {
+            .sheet(isPresented: $isShowingCamera, onDismiss: {
+                print("[DEBUG] Sheet dismiss edildi, capturedImage: \(capturedImage != nil)")
+                if capturedImage != nil {
+                    print("[DEBUG] Crop view açılıyor...")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        print("[DEBUG] showCropView = true")
+                        showCropView = true
+                    }
+                }
+            }) {
                 InlineCustomCameraView { image in
+                    print("[DEBUG] Fotoğraf çekildi, boyut: \(image.size)")
                     capturedImage = image
                     isShowingCamera = false
-                    // Hemen aç
-                    showCropView = true
+                    print("[DEBUG] Sheet kapatma başlatıldı")
                 }
             }
             .fullScreenCover(isPresented: $showCropView) {
+                let _ = print("[DEBUG] fullScreenCover tetiklendi, showCropView: \(showCropView)")
                 if let image = capturedImage {
+                    let _ = print("[DEBUG] ImageCropOCRView oluşturuluyor")
                     ImageCropOCRView(
                         image: image,
                         onComplete: {
@@ -309,7 +320,10 @@ struct ImageOCRView: View {
                 return
             }
             capturedImage = image
-            showCropView = true
+            // SwiftUI render cycle'dan sonra aç
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                showCropView = true
+            }
         } catch {
             errorMessage = "Görsel yüklenemedi: \(error.localizedDescription)"
         }
@@ -559,7 +573,8 @@ struct ImageCropOCRView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        let _ = print("[DEBUG] ImageCropOCRView body rendered")
+        return NavigationView {
             ZStack {
                 Color.black.ignoresSafeArea()
                 .onTapGesture { /* Toolbar gesture'dan korun */ }
