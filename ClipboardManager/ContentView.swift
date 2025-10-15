@@ -234,6 +234,8 @@ struct ImageOCRView: View {
     @State private var selectedItem: PhotosPickerItem?
     @State private var isProcessing = false
     @State private var errorMessage: String?
+    @State private var capturedImage: UIImage?
+    @State private var showCropView = false
     
     var body: some View {
         NavigationView {
@@ -268,9 +270,21 @@ struct ImageOCRView: View {
             }
             .sheet(isPresented: $isShowingCamera) {
                 InlineCustomCameraView { image in
-                    if let data = image.jpegData(compressionQuality: 0.9) {
-                        Task { await handleImageData(data) }
-                    }
+                    capturedImage = image
+                    showCropView = true
+                }
+            }
+            .fullScreenCover(isPresented: $showCropView) {
+                if let image = capturedImage {
+                    ImageCropOCRView(
+                        image: image,
+                        onComplete: {
+                            isPresented = false
+                        },
+                        onCancel: {
+                            capturedImage = nil
+                        }
+                    )
                 }
             }
             .onChange(of: selectedItem) { _, newItem in
@@ -287,32 +301,18 @@ struct ImageOCRView: View {
         isProcessing = true
         defer { isProcessing = false }
         do {
-            guard let data = try await item.loadTransferable(type: Data.self) else {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
                 errorMessage = "Görsel okunamadı"
                 return
             }
-            await handleImageData(data)
-            return
+            capturedImage = image
+            showCropView = true
         } catch {
-            errorMessage = "OCR başarısız: \(error.localizedDescription)"
+            errorMessage = "Görsel yüklenemedi: \(error.localizedDescription)"
         }
     }
     
-    @MainActor
-    private func handleImageData(_ data: Data) async {
-        do {
-            let ocrText = try await MediaProcessor().extractTextFromImage(data)
-            guard !ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                errorMessage = "Metin bulunamadı"
-                return
-            }
-            ClipboardManager.shared.addItem(ocrText)
-            ClipboardManager.shared.saveItems()
-            isPresented = false
-        } catch {
-            errorMessage = "OCR başarısız: \(error.localizedDescription)"
-        }
-    }
     
 }
 
@@ -524,5 +524,327 @@ struct InlineCustomCameraView: View {
         }
         .onAppear { controller.start() }
         .onDisappear { controller.stop() }
+    }
+}
+import SwiftUI
+import Vision
+
+/// Fotoğraf önizleme ve OCR için alan seçimi
+struct ImageCropOCRView: View {
+    let image: UIImage
+    let onComplete: () -> Void
+    let onCancel: () -> Void
+    
+    @State private var cropRect: CGRect = .zero
+    @State private var isDragging = false
+    @State private var dragStart: CGPoint = .zero
+    @State private var isProcessing = false
+    @State private var errorMessage: String?
+    
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                GeometryReader { geometry in
+                    ZStack {
+                        // Orijinal fotoğraf
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                        
+                        // Karartma overlay (seçilen alan hariç)
+                        if cropRect != .zero {
+                            DimmingOverlay(cropRect: cropRect, geometry: geometry)
+                        }
+                        
+                        // Crop rectangle
+                        if cropRect != .zero {
+                            CropRectangle(rect: cropRect)
+                        }
+                        
+                        // Drag gesture
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onChanged { value in
+                                        handleDrag(value: value, in: geometry.size)
+                                    }
+                                    .onEnded { _ in
+                                        isDragging = false
+                                    }
+                            )
+                    }
+                }
+                
+                // İşlem durumu
+                if isProcessing {
+                    ZStack {
+                        Color.black.opacity(0.7)
+                            .ignoresSafeArea()
+                        
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .scaleEffect(1.5)
+                                .tint(.white)
+                            Text("Metin çıkarılıyor...")
+                                .foregroundColor(.white)
+                                .font(.headline)
+                        }
+                    }
+                }
+                
+                // Hata mesajı
+                if let errorMessage = errorMessage {
+                    VStack {
+                        Spacer()
+                        Text(errorMessage)
+                            .foregroundColor(.white)
+                            .padding()
+                            .background(Color.red.opacity(0.8))
+                            .cornerRadius(8)
+                            .padding()
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("İptal") {
+                        onCancel()
+                        dismiss()
+                    }
+                    .foregroundColor(.white)
+                }
+                
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 2) {
+                        Text("Alan Seç")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Text(cropRect == .zero ? "Parmağınızla çizin" : "Seçilen alan işlenecek")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack(spacing: 12) {
+                        if cropRect != .zero {
+                            Button(action: resetSelection) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        
+                        Button(action: processOCR) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(cropRect == .zero ? .gray : .green)
+                                .font(.title3)
+                        }
+                        .disabled(cropRect == .zero || isProcessing)
+                    }
+                }
+            }
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Color.black.opacity(0.8), for: .navigationBar)
+        }
+    }
+    
+    // MARK: - Drag Handling
+    
+    private func handleDrag(value: DragGesture.Value, in size: CGSize) {
+        if !isDragging {
+            isDragging = true
+            dragStart = value.location
+            cropRect = CGRect(origin: dragStart, size: .zero)
+        }
+        
+        let currentPoint = value.location
+        
+        let x = min(dragStart.x, currentPoint.x)
+        let y = min(dragStart.y, currentPoint.y)
+        let width = abs(currentPoint.x - dragStart.x)
+        let height = abs(currentPoint.y - dragStart.y)
+        
+        // Sınırları kontrol et
+        let constrainedX = max(0, min(x, size.width))
+        let constrainedY = max(0, min(y, size.height))
+        let constrainedWidth = min(width, size.width - constrainedX)
+        let constrainedHeight = min(height, size.height - constrainedY)
+        
+        cropRect = CGRect(
+            x: constrainedX,
+            y: constrainedY,
+            width: constrainedWidth,
+            height: constrainedHeight
+        )
+    }
+    
+    private func resetSelection() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            cropRect = .zero
+        }
+    }
+    
+    // MARK: - OCR Processing
+    
+    private func processOCR() {
+        guard cropRect != .zero else { return }
+        
+        isProcessing = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                // Crop edilen alanı al
+                let croppedImage = cropImage(image, to: cropRect)
+                
+                // OCR işle
+                guard let imageData = croppedImage.jpegData(compressionQuality: 0.9) else {
+                    await MainActor.run {
+                        errorMessage = "Görsel işlenemedi"
+                        isProcessing = false
+                    }
+                    return
+                }
+                
+                let ocrText = try await MediaProcessor().extractTextFromImage(imageData)
+                
+                await MainActor.run {
+                    guard !ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        errorMessage = "Seçilen alanda metin bulunamadı"
+                        isProcessing = false
+                        return
+                    }
+                    
+                    ClipboardManager.shared.addItem(ocrText)
+                    ClipboardManager.shared.saveItems()
+                    HapticManager.trigger(.success)
+                    
+                    onComplete()
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "OCR başarısız: \(error.localizedDescription)"
+                    isProcessing = false
+                }
+            }
+        }
+    }
+    
+    private func cropImage(_ image: UIImage, to rect: CGRect) -> UIImage {
+        // UIImage coordinate system'e çevir
+        let scale = image.scale
+        let imageSize = CGSize(
+            width: image.size.width * scale,
+            height: image.size.height * scale
+        )
+        
+        // Görüntüdeki gerçek koordinatları hesapla
+        guard let cgImage = image.cgImage else { return image }
+        
+        let scaleX = imageSize.width / (image.size.width)
+        let scaleY = imageSize.height / (image.size.height)
+        
+        let cropRect = CGRect(
+            x: rect.origin.x * scaleX,
+            y: rect.origin.y * scaleY,
+            width: rect.size.width * scaleX,
+            height: rect.size.height * scaleY
+        )
+        
+        guard let croppedCGImage = cgImage.cropping(to: cropRect) else {
+            return image
+        }
+        
+        return UIImage(cgImage: croppedCGImage, scale: scale, orientation: image.imageOrientation)
+    }
+}
+
+// MARK: - Supporting Views
+
+struct CropRectangle: View {
+    let rect: CGRect
+    
+    var body: some View {
+        Rectangle()
+            .stroke(Color.green, lineWidth: 3)
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+            .overlay(
+                // Corner handles
+                Group {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 12, height: 12)
+                        .position(x: rect.minX, y: rect.minY)
+                    
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 12, height: 12)
+                        .position(x: rect.maxX, y: rect.minY)
+                    
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 12, height: 12)
+                        .position(x: rect.minX, y: rect.maxY)
+                    
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 12, height: 12)
+                        .position(x: rect.maxX, y: rect.maxY)
+                }
+            )
+            .overlay(
+                // Boyut bilgisi
+                VStack {
+                    Text("\(Int(rect.width)) × \(Int(rect.height))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.white)
+                        .padding(4)
+                        .background(Color.green.opacity(0.8))
+                        .cornerRadius(4)
+                }
+                .position(x: rect.midX, y: rect.minY - 20)
+            )
+    }
+}
+
+struct DimmingOverlay: View {
+    let cropRect: CGRect
+    let geometry: GeometryProxy
+    
+    var body: some View {
+        ZStack {
+            // Top
+            Rectangle()
+                .fill(Color.black.opacity(0.6))
+                .frame(width: geometry.size.width, height: cropRect.minY)
+                .position(x: geometry.size.width / 2, y: cropRect.minY / 2)
+            
+            // Bottom
+            Rectangle()
+                .fill(Color.black.opacity(0.6))
+                .frame(width: geometry.size.width, height: geometry.size.height - cropRect.maxY)
+                .position(x: geometry.size.width / 2, y: cropRect.maxY + (geometry.size.height - cropRect.maxY) / 2)
+            
+            // Left
+            Rectangle()
+                .fill(Color.black.opacity(0.6))
+                .frame(width: cropRect.minX, height: cropRect.height)
+                .position(x: cropRect.minX / 2, y: cropRect.midY)
+            
+            // Right
+            Rectangle()
+                .fill(Color.black.opacity(0.6))
+                .frame(width: geometry.size.width - cropRect.maxX, height: cropRect.height)
+                .position(x: cropRect.maxX + (geometry.size.width - cropRect.maxX) / 2, y: cropRect.midY)
+        }
     }
 }
